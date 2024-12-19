@@ -8,15 +8,35 @@ bundle:
 sync:
   exclude:
   - "./.venv"
+
+variables:
+  my_job_id:
+    description: id of the job
+    lookup:
+      job: "my_job"
+
+resources:
+  jobs:
+    my_job:
+      name: my_job
+      tasks:
+        - task_key: my_task
+          notebook_task:
+            notebook_path: /Workspace/my_task
+          existing_cluster_id: "0828-185947-7kt2x3rj"
+    
+    parent_job:
+      name: parent_job
+      tasks:
+        - task_key: run_child_job
+          run_job_task:
+            job_id: ${var.my_job_id}
+            job_parameters:
+              my_param_value: my_param_value
+  
 targets:
   dev:
     mode: development
     default: true
     workspace:
       host: https://adb-2222148037567154.14.azuredatabricks.net
-
-  ## Optionally, there could be 'staging' or 'prod' targets here.
-  #
-  # prod:
-  #   workspace:
-  #     host: https://adb-2222148037567154.14.azuredatabricks.net
