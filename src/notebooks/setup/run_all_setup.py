@@ -17,8 +17,7 @@ print(f"Setup folder: {setup_folder}")
 
 # List all notebooks in the setup folder
 notebooks = []
-for file_info in dbutils.fs.ls(f"file:/Workspace{setup_folder}"):
-    name = file_info.name
+for name in os.listdir(f"/Workspace{setup_folder}"):
     # Skip this master notebook and get only numbered notebooks (3-digit prefix)
     if name == "run_all_setup" or name == "run_all_setup.py":
         continue

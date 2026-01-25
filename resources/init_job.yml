@@ -1,7 +1,7 @@
 resources:
   jobs:
     init_infrastructure:
-      name: "[${bundle.target}] poker_analyzer_init"
+      name: "poker_analyzer_init"
       description: "Initialize catalog, schemas and volumes for poker_analyzer"
       tags:
         project: poker_analyzer
