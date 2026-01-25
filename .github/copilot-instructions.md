@@ -1,5 +1,13 @@
 # Copilot Instructions for poker_analyzer
 
+## General Rules
+
+### Language
+- **All code, comments, and documentation must be in English**
+- Variable names, function names, class names - English only
+- Commit messages - English
+- README, docstrings - English
+
 ## Databricks Asset Bundle Tips
 
 ### Naming Conventions
