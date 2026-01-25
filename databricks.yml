@@ -4,11 +4,19 @@
 bundle:
   name: poker_analyzer
 
+variables:
+  serverless_environment_version:
+    description: "Serverless environment version"
+    default: "4"
+
 sync:
   exclude:
     - ".venv"
     - "__pycache__"
     - "*.pyc"
+
+include:
+  - resources/*.yml
 
 targets:
   dev:

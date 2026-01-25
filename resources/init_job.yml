@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    init_infrastructure:
+      name: "[${bundle.target}] poker_analyzer_init"
+      description: "Initialize catalog, schemas and volumes for poker_analyzer"
+      tags:
+        project: poker_analyzer
+        type: setup
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+
+      tasks:
+        - task_key: run_all_setup
+          notebook_task:
+            notebook_path: ../src/notebooks/setup/run_all_setup.py
+          environment_key: serverless
