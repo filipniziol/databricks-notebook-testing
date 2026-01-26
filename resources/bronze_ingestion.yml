@@ -1,0 +1,34 @@
+resources:
+  jobs:
+    bronze_ingestion:
+      name: "bronze_ingestion"
+      description: "Load raw files from volumes to bronze tables using Auto Loader"
+      tags:
+        project: poker_analyzer
+        layer: bronze
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+
+      tasks:
+        - task_key: load_analysis_result
+          notebook_task:
+            notebook_path: ../src/notebooks/bronze/load_analysis_result.py
+          environment_key: serverless
+
+        - task_key: load_hand_history
+          notebook_task:
+            notebook_path: ../src/notebooks/bronze/load_hand_history.py
+          environment_key: serverless
+
+        - task_key: load_tournament_history
+          notebook_task:
+            notebook_path: ../src/notebooks/bronze/load_tournament_history.py
+          environment_key: serverless
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: Europe/Warsaw
+        pause_status: PAUSED

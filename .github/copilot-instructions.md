@@ -46,6 +46,12 @@ environments:
 - Avoid creating separate tasks for each notebook (doesn't scale)
 - Master notebook should use `dbutils.notebook.run()` to execute child notebooks in order
 
+### Resource File Naming
+- **YAML file name MUST match the job/pipeline key name**
+- Example: job `bronze_ingestion` → file `resources/bronze_ingestion.yml`
+- Example: job `poker_analyzer_init` → file `resources/poker_analyzer_init.yml`
+- This keeps the codebase consistent and easy to navigate
+
 ### Project Structure
 ```
 poker_analyzer/

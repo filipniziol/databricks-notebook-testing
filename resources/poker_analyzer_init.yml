@@ -1,6 +1,6 @@
 resources:
   jobs:
-    init_infrastructure:
+    poker_analyzer_init:
       name: "poker_analyzer_init"
       description: "Initialize catalog, schemas and volumes for poker_analyzer"
       tags:
