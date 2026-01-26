@@ -52,6 +52,39 @@ Complete hand records but **WITHOUT player names** - just seat numbers.
 - Complete action sequences → what happened after hero acted
 - Final results → who won, actual pot sizes
 
+### 3. GG Tournament History (Results)
+
+Tournament summary files with final results.
+
+**Example content:**
+```
+Tournament #260520685, Mystery Battle Royale $25, Hold'em No Limit
+Buy-in: $12.5+$2+$10.5
+18 Players
+Total Prize Pool: $414
+Tournament started 2026/01/25 23:41:11
+1st : Hero, $161
+```
+
+**Parsed data:**
+| Field | Example |
+|-------|--------|
+| tournament_id | 260520685 |
+| tournament_name | Mystery Battle Royale $25 |
+| buyin_prize | $12.5 |
+| buyin_rake | $2 |
+| buyin_bounty | $10.5 |
+| total_players | 18 |
+| prize_pool | $414 |
+| started_at | 2026-01-25 23:41:11 |
+| hero_position | 1 |
+| hero_prize | $161 |
+
+**Value:**
+- Track overall ROI per tournament type
+- Correlate GPT compliance with tournament results
+- Identify which stake levels are most profitable
+
 ---
 
 ## Use Cases
@@ -179,6 +212,52 @@ Find hands where:
 - Board was scary (many draws completed)
 → POTENTIALLY MISSED BLUFF CATCH
 ```
+
+#### 6. GPT Compliance vs Tournament Results
+
+**Problem:** Does following GPT advice actually improve my results?
+
+**Hypothesis:** Tournaments where I follow GPT more consistently should have better outcomes.
+
+**Data Needed:**
+- `silver.tournaments`: hero_position, hero_prize, buyin_total
+- `silver.screenshots`: gpt_recommendation per decision in tournament
+- `silver.hands`: hero actual action (matched via timestamp)
+
+**Metrics per tournament:**
+```sql
+SELECT 
+  t.tournament_id,
+  t.hero_position,
+  t.hero_prize - t.buyin_total as profit,
+  COUNT(s.file_name) as total_decisions,
+  SUM(CASE WHEN s.gpt_recommendation = h.hero_actual_action THEN 1 ELSE 0 END) as gpt_followed,
+  gpt_followed * 100.0 / total_decisions as compliance_pct
+FROM silver.tournaments t
+JOIN silver.screenshots s ON s.tournament_id = t.tournament_id
+JOIN silver.hands h ON h.hand_id = s.matched_hand_id
+GROUP BY 1,2,3
+```
+
+**Analysis:**
+```
+Tournaments by GPT compliance quartile:
+├── Q1 (0-25% compliance):  avg finish 12th, avg profit -$8
+├── Q2 (25-50% compliance): avg finish 9th,  avg profit -$3
+├── Q3 (50-75% compliance): avg finish 6th,  avg profit +$5
+└── Q4 (75-100% compliance): avg finish 4th, avg profit +$15
+```
+
+**Key Questions:**
+1. Does higher GPT compliance correlate with better finishes?
+2. In which spots does deviation from GPT hurt most? (preflop vs postflop)
+3. Are there spots where my deviation is actually +EV? (I know better than GPT)
+4. Does compliance matter more in rush stage vs final table?
+
+**Output:**
+- "Your ROI is +35% when following GPT >70% vs -15% when <50%"
+- "Deviating from GPT on river decisions costs you 2.5BB/tournament"
+- "Your preflop deviations are +EV (you're tighter than GPT in early position)"
 
 ---
 
