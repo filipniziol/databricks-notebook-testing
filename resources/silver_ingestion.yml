@@ -27,3 +27,9 @@ resources:
           notebook_task:
             notebook_path: ../src/notebooks/silver/transform_screenshots.py
           environment_key: serverless
+
+        - task_key: transform_hands
+          description: "Parse hand history to silver.hands, hand_players, hand_actions"
+          notebook_task:
+            notebook_path: ../src/notebooks/silver/transform_hands.py
+          environment_key: serverless
