@@ -18,7 +18,7 @@
 from pyspark.sql.functions import (
     col, current_timestamp, from_json, explode, collect_list, first,
     to_timestamp, regexp_extract, concat_ws, sort_array, row_number,
-    struct, array_distinct, size, when, lit
+    struct, array_distinct, size, when, lit, date_format, floor
 )
 from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType, DoubleType, 
@@ -132,9 +132,19 @@ df_with_ts = df_valid.withColumn(
 # COMMAND ----------
 
 # Create dedup key: same spot = same hero cards, position, street, board, pot
+# PLUS 10-minute time window (same spot captured multiple times in quick succession)
+# Screenshots from different sessions (hours/days apart) are different spots
 df_with_key = df_with_ts.withColumn(
+    "time_bucket",
+    # Round to 10-minute windows: 21:15 and 21:22 = same bucket, 21:15 and 21:35 = different
+    date_format(
+        (floor(col("screenshot_at").cast("long") / 600) * 600).cast("timestamp"),
+        "yyyyMMdd_HHmm"
+    )
+).withColumn(
     "spot_key",
     concat_ws("|",
+        col("time_bucket"),
         col("data.hero.cards"),
         col("data.hero.pos"),
         col("data.street"),
