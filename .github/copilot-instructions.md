@@ -19,6 +19,7 @@
 
 ### One Object Per Migration (CRITICAL)
 - **Each migration file should create exactly ONE object** (1 table, 1 view, 1 schema)
+- **1 VIEW = 1 FILE** - never put multiple views in one file
 - Never put multiple CREATE statements in one migration
 - This makes tracking, debugging, and re-running easier
 - Bad: `015_create_views_gold.sql` with 4 views

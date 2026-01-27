@@ -19,19 +19,15 @@ WITH session_hands AS (
         h.hand_timestamp,
         h.hero_result,
         h.big_blind,
-        hp.amount_won,
+        hp.net_profit,
         hp.chips_start,
         -- Order within tournament
         ROW_NUMBER() OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp) AS hand_num,
-        -- Running profit
-        SUM(CASE 
-            WHEN h.hero_result = 'won' THEN hp.amount_won 
-            WHEN h.hero_result IN ('lost', 'folded') THEN -hp.chips_start + COALESCE(hp.amount_won, 0)
-            ELSE 0 
-        END) OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_profit,
+        -- Running profit using net_profit
+        SUM(hp.net_profit) OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_profit,
         -- Previous hand result
         LAG(h.hero_result) OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp) AS prev_result,
-        LAG(hp.amount_won) OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp) AS prev_amount_won
+        LAG(hp.net_profit) OVER (PARTITION BY h.tournament_id ORDER BY h.hand_timestamp) AS prev_net_profit
     FROM poker.silver.hands h
     JOIN poker.silver.hand_players hp ON h.hand_id = hp.hand_id AND hp.is_hero = true
 ),
@@ -49,9 +45,9 @@ with_gpt_decisions AS (
             WHEN s.gpt_action IN ('call', 'raise', 'bet') AND ha.action_type = 'fold' THEN false
             ELSE NULL
         END AS followed_gpt,
-        -- Was previous hand a big loss (>10bb)?
-        CASE WHEN sh.prev_result IN ('lost', 'folded') AND sh.prev_amount_won < -sh.big_blind * 10 THEN true ELSE false END AS after_big_loss,
-        -- Running status
+        -- Was previous hand a big loss (lost >10bb)?
+        CASE WHEN sh.prev_net_profit < -sh.big_blind * 10 THEN true ELSE false END AS after_big_loss,
+        -- Running status based on cumulative net profit
         CASE 
             WHEN sh.running_profit > sh.big_blind * 20 THEN 'winning_big'
             WHEN sh.running_profit > 0 THEN 'winning'
