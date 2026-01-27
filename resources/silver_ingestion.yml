@@ -1,0 +1,23 @@
+# Silver ingestion job configuration
+# Transform data from bronze to silver layer
+
+resources:
+  jobs:
+    silver_ingestion:
+      name: "silver_ingestion"
+      description: "Transform bronze data to silver layer - parsed and structured"
+      tags:
+        project: poker_analyzer
+        layer: silver
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+
+      tasks:
+        - task_key: transform_tournaments
+          description: "Parse tournament history files to silver.tournaments"
+          notebook_task:
+            notebook_path: ../src/notebooks/silver/transform_tournaments.py
+          environment_key: serverless

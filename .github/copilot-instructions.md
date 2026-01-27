@@ -60,7 +60,9 @@ poker_analyzer/
 │   └── *.yml          # Job definitions
 └── src/
     ├── notebooks/
-    │   └── setup/     # Infrastructure notebooks (SQL)
+    │   ├── setup/     # Infrastructure notebooks (SQL)
+    │   ├── bronze/    # Raw data ingestion
+    │   └── silver/    # Parsed/transformed data
     └── package/       # Python modules for imports
 ```
 
@@ -68,3 +70,28 @@ poker_analyzer/
 - Always use variables for values that might change between environments
 - Define in `databricks.yml` under `variables:` with defaults
 - Override per target if needed
+
+### Notebook Best Practices
+
+#### No verification/display cells in production notebooks
+- **NEVER** add "verify results" or summary SQL queries at the end
+- Production notebooks should do ONE thing: transform and save
+- Debug/verify cells belong in separate ad-hoc notebooks, not in jobs
+
+#### Avoid count() for control flow
+- **NEVER** use `df.count()` to check if dataframe is empty before writing
+- `count()` triggers full computation and is slow
+- Just write the data - if empty, nothing happens
+- Bad: `if df.count() > 0: df.write...`
+- Good: `df.write...`
+
+#### Small tables: full overwrite
+- For small reference tables (< 1M rows), use `mode("overwrite")`
+- Simpler logic, no deduplication needed
+- Always consistent state
+- Example: tournament results, player stats
+
+#### Large tables: streaming or incremental
+- Use `readStream` + `writeStream` with checkpoints
+- Or MERGE INTO for upserts
+- Track what's been processed via watermarks or checkpoints
