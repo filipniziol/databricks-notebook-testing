@@ -1,0 +1,23 @@
+# Screenshot-Hand mapping job configuration
+# Run on-demand to refresh mapping between screenshots and hands
+
+resources:
+  jobs:
+    screenshot_hand_mapping:
+      name: "screenshot_hand_mapping"
+      description: "Map screenshots to hand history records (run on-demand)"
+      tags:
+        project: poker_analyzer
+        layer: silver
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+
+      tasks:
+        - task_key: map_screenshots_to_hands
+          description: "Match screenshots with hands by cards+position+time"
+          notebook_task:
+            notebook_path: ../src/notebooks/silver/transform_screenshot_hand_mapping.py
+          environment_key: serverless

@@ -721,7 +721,15 @@ class GGHandHistoryParser:
         return result
     
     def _assign_positions(self, hand: Hand):
-        """Assign positions based on button seat"""
+        """Assign positions based on button seat.
+        
+        Positions go counter-clockwise from button:
+        BTN -> SB -> BB -> UTG -> UTG+1 -> MP -> HJ -> CO -> (back to BTN)
+        
+        For 5-max: BTN, SB, BB, UTG, MP
+        For 6-max: BTN, SB, BB, UTG, MP, CO
+        For 9-max: BTN, SB, BB, UTG, UTG+1, MP, HJ, CO
+        """
         if not hand.players:
             return
         
@@ -743,7 +751,7 @@ class GGHandHistoryParser:
         if btn_idx is None:
             return
         
-        # Assign SB and BB
+        # Assign SB and BB (next 2 players after button)
         if n >= 2:
             sb_idx = (btn_idx + 1) % n
             players_by_seat[sb_idx].position = "SB"
@@ -752,22 +760,27 @@ class GGHandHistoryParser:
             bb_idx = (btn_idx + 2) % n
             players_by_seat[bb_idx].position = "BB"
         
-        # Assign other positions (UTG, MP, CO, etc.)
+        # Assign other positions based on table size
+        # Remaining players are between BB and BTN (going counter-clockwise)
         if n >= 4:
-            # Positions: UTG, UTG+1, MP, MP+1, HJ, CO, BTN, SB, BB
-            remaining_positions = []
-            if n <= 6:
-                remaining_positions = ["UTG", "MP", "CO"]
-            elif n <= 9:
-                remaining_positions = ["UTG", "UTG+1", "MP", "HJ", "CO"]
+            # Define positions from UTG (first to act) to CO (last before BTN)
+            # For different table sizes:
+            position_maps = {
+                4: ["UTG"],              # 4-max: BTN, SB, BB, UTG
+                5: ["UTG", "MP"],        # 5-max: BTN, SB, BB, UTG, MP
+                6: ["UTG", "MP", "CO"],  # 6-max: BTN, SB, BB, UTG, MP, CO
+                7: ["UTG", "UTG+1", "MP", "CO"],
+                8: ["UTG", "UTG+1", "MP", "HJ", "CO"],
+                9: ["UTG", "UTG+1", "MP", "MP+1", "HJ", "CO"],
+            }
             
-            pos_idx = 0
-            for i in range(3, n):
-                idx = (btn_idx + i) % n
-                if players_by_seat[idx].position is None and pos_idx < len(remaining_positions):
-                    # This is not BTN, SB, or BB - assign early/middle/late position
-                    players_by_seat[idx].position = remaining_positions[pos_idx]
-                    pos_idx += 1
+            positions = position_maps.get(n, position_maps[9][:n-3])
+            
+            # Start from BB+1 (UTG position)
+            for i, pos_name in enumerate(positions):
+                idx = (btn_idx + 3 + i) % n  # btn+1=SB, btn+2=BB, btn+3=UTG, ...
+                if players_by_seat[idx].position is None:
+                    players_by_seat[idx].position = pos_name
 
 
 class GGTournamentSummaryParser:
