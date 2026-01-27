@@ -21,3 +21,9 @@ resources:
           notebook_task:
             notebook_path: ../src/notebooks/silver/transform_tournaments.py
           environment_key: serverless
+
+        - task_key: transform_screenshots
+          description: "Parse screenshot analysis to silver.screenshots (deduplicated)"
+          notebook_task:
+            notebook_path: ../src/notebooks/silver/transform_screenshots.py
+          environment_key: serverless

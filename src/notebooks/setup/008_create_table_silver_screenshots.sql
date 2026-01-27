@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS poker.silver.screenshots (
     gpt_action              STRING                      COMMENT 'GPT parsed action',
     gpt_amount              DECIMAL(10,2)               COMMENT 'GPT recommended amount (for raise/bet)',
     gpt_time                DECIMAL(6,3)                COMMENT 'GPT response time in seconds',
+    gpt_prompt_system       STRING                      COMMENT 'System prompt sent to GPT',
+    
+    -- Deduplication tracking
+    spot_key                STRING                      COMMENT 'Hash key for same spot (hero_cards+pos+street+board+pot)',
+    all_recommendations     ARRAY<STRING>               COMMENT 'All GPT recommendations for this spot across screenshots',
+    all_recommendations_full ARRAY<STRING>              COMMENT 'Full recommendation text (e.g. "raise 2.5 BB")',
+    recommendation_count    INT                         COMMENT 'How many times this spot was captured',
     
     -- Metadata
     ingested_at             TIMESTAMP                   COMMENT 'When record was loaded to silver'
