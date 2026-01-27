@@ -143,6 +143,16 @@ All setup notebooks live in `src/notebooks/setup/` and run in numerical order vi
 | `022_create_view_gold_hand_line_analysis.sql` | `poker.gold.hand_line_analysis` | Full hand line analysis - all GPT recs vs hero actions per hand |
 | `023_create_view_gold_fold_showdown_analysis.sql` | `poker.gold.fold_showdown_analysis` | "What if" analysis - when hero folded but showdown happened |
 
+### Gold Views - Behavioral Analysis (024-027)
+| File | View | Description |
+|------|------|-------------|
+| `024_create_view_gold_gpt_compliance_stats.sql` | `poker.gold.gpt_compliance_stats` | Aggregated compliance by stage, street, stack depth, headsup vs multiway |
+| `025_create_view_gold_deviation_outcome_analysis.sql` | `poker.gold.deviation_outcome_analysis` | What happens when hero deviates (all-in vs call, win rates) |
+| `026_create_view_gold_tilt_detection.sql` | `poker.gold.tilt_detection` | Compliance after big losses, consecutive losses, session status |
+| | `poker.gold.tilt_consecutive_losses` | Compliance by recent loss streak (0-1, 2-3, 4+ losses) |
+| `027_create_view_gold_headsup_analysis.sql` | `poker.gold.headsup_analysis` | GPT compliance in heads-up vs multiway |
+| | `poker.gold.headsup_fold_analysis` | Does GPT recommend fold too much in heads-up? |
+
 ---
 
 ### Variables

@@ -129,6 +129,23 @@ def parse_hand_history(raw_content: str, file_name: str) -> list:
                             three_bet = True
                             break
                 
+                # Calculate total chips invested by this player
+                all_actions = (
+                    hand_dict.get("preflop_actions", []) + 
+                    hand_dict.get("flop_actions", []) + 
+                    hand_dict.get("turn_actions", []) + 
+                    hand_dict.get("river_actions", [])
+                )
+                total_invested = sum(
+                    float(a.get("amount", 0) or 0) 
+                    for a in all_actions 
+                    if a["player"] == p["name"] and a["action"] in ("call", "raise", "bet", "post_sb", "post_bb", "post_ante")
+                )
+                
+                # Net profit = amount won - amount invested
+                amount_won = float(player_result["won_amount"]) if player_result and player_result.get("won_amount") else 0.0
+                net_profit = amount_won - total_invested
+                
                 player_record = {
                     "hand_id": hand_dict["hand_id"],
                     "seat": p["seat"],
@@ -146,7 +163,9 @@ def parse_hand_history(raw_content: str, file_name: str) -> list:
                     ),
                     "went_to_showdown": player_result and not player_result.get("folded", True) if player_result else False,
                     "won_hand": player_result and player_result.get("won_amount", 0) > 0 if player_result else False,
-                    "amount_won": float(player_result["won_amount"]) if player_result and player_result.get("won_amount") else 0.0,
+                    "amount_won": amount_won,
+                    "total_invested": total_invested,
+                    "net_profit": net_profit,
                     "result_description": player_result.get("hand_description") if player_result else None,
                     "vpip": vpip,
                     "pfr": pfr,
@@ -279,6 +298,8 @@ players_schema = StructType([
     StructField("went_to_showdown", BooleanType(), True),
     StructField("won_hand", BooleanType(), True),
     StructField("amount_won", DoubleType(), True),
+    StructField("total_invested", DoubleType(), True),
+    StructField("net_profit", DoubleType(), True),
     StructField("result_description", StringType(), True),
     StructField("vpip", BooleanType(), True),
     StructField("pfr", BooleanType(), True),
