@@ -35,16 +35,17 @@ WITH hero_folds AS (
 ),
 
 showdown_winners AS (
-    -- Players who won at showdown with cards shown
+    -- Players who won - may or may not have shown cards
+    -- hole_cards are shown only at actual showdown
     SELECT
         hp.hand_id,
         hp.player_name AS winner_name,
-        hp.hole_cards AS winner_cards,
+        hp.hole_cards AS winner_cards,  -- NULL if no showdown
         hp.result_description AS winner_hand,
-        hp.amount_won
+        hp.amount_won,
+        hp.went_to_showdown AS winner_showed_cards
     FROM poker.silver.hand_players hp
     WHERE hp.won_hand = true
-    AND hp.hole_cards IS NOT NULL  -- Cards were shown
 ),
 
 screenshot_advice AS (
@@ -77,6 +78,7 @@ base_data AS (
         sw.winner_cards,
         sw.winner_hand,
         sw.amount_won AS pot_won,
+        sw.winner_showed_cards,
         sa.gpt_action AS gpt_advised,
         sa.gpt_recommendation,
         sa.pot_at_decision,

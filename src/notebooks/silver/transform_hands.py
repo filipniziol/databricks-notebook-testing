@@ -139,7 +139,11 @@ def parse_hand_history(raw_content: str, file_name: str) -> list:
                     "is_sb": p["position"] == "SB",
                     "is_bb": p["position"] == "BB",
                     "chips_start": float(p["stack"]),
-                    "hole_cards": "".join(p["hole_cards"]) if p["hole_cards"] else None,
+                    # hole_cards: prefer from results (showdown cards) over players (dealt cards)
+                    "hole_cards": (
+                        "".join(player_result["hole_cards"]) if player_result and player_result.get("hole_cards") 
+                        else ("".join(p["hole_cards"]) if p["hole_cards"] else None)
+                    ),
                     "went_to_showdown": player_result and not player_result.get("folded", True) if player_result else False,
                     "won_hand": player_result and player_result.get("won_amount", 0) > 0 if player_result else False,
                     "amount_won": float(player_result["won_amount"]) if player_result and player_result.get("won_amount") else 0.0,
