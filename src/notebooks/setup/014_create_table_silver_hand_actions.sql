@@ -1,7 +1,9 @@
--- Migration: 014_create_table_silver_hand_actions
--- Description: Individual actions per hand - full action sequence
--- Source: bronze.hand_history -> action lines
--- Useful for: detailed hand replay, action timing analysis
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: hand_actions
+-- MAGIC Individual actions per hand - full action sequence for replay/analysis
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.hand_actions (
     -- Composite primary key

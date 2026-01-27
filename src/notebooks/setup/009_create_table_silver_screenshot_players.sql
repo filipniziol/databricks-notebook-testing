@@ -1,6 +1,9 @@
--- Migration: 009_create_table_silver_screenshot_players
--- Description: Players (opponents) per screenshot - 1:N relationship
--- Source: bronze.analysis_result -> players[] array
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: screenshot_players
+-- MAGIC Players (opponents) per screenshot - 1:N relationship
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.screenshot_players (
     -- Composite primary key

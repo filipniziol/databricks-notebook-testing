@@ -17,6 +17,21 @@
 - New migrations = new numbered notebook (e.g., `005_create_table_xyz.sql`)
 - Never modify existing migration numbers - always add new ones
 
+### SQL Notebook Header (CRITICAL)
+- **EVERY .sql file MUST start with `-- Databricks notebook source`**
+- Without this header, Databricks cannot run the file as a notebook
+- Format:
+```sql
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Table: my_table
+-- MAGIC Description here
+
+-- COMMAND ----------
+
+CREATE TABLE IF NOT EXISTS ...
+```
+
 ### SQL vs Python for DDL
 - Use `.sql` files for schema/catalog/volume creation (DDL operations)
 - Use `.py` files only when Python logic is needed

@@ -1,6 +1,9 @@
--- Migration: 010_create_table_silver_screenshot_history
--- Description: Hand history per street per screenshot - tracks action progression
--- Source: bronze.analysis_result -> hand_history[] array
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: screenshot_history
+-- MAGIC Hand history per street per screenshot - tracks action progression
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.screenshot_history (
     -- Composite primary key

@@ -1,7 +1,9 @@
--- Migration: 012_create_table_silver_hands
--- Description: Hand headers - one row per hand (rozdanie)
--- Source: bronze.hand_history (TXT files with multiple hands)
--- Matching key: tournament_id + hand_timestamp (closest to screenshot_at)
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: hands
+-- MAGIC Hand headers - one row per hand. Match to screenshots via hand_timestamp ≈ screenshot_at
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.hands (
     -- Primary key

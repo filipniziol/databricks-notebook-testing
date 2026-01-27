@@ -1,6 +1,9 @@
--- Migration: 008_create_table_silver_screenshots
--- Description: Main screenshots table with hero flattened and GPT advice summary
--- Source: bronze.analysis_result (JSON files from screenshot analysis)
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: screenshots
+-- MAGIC Main screenshots table with hero flattened and GPT advice summary
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.screenshots (
     -- Primary key

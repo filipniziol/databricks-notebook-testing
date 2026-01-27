@@ -1,6 +1,9 @@
--- Migration: 011_create_table_silver_tournaments
--- Description: Tournament results parsed from GGPoker tournament history files
--- Source: bronze.tournament_history (TXT files)
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: tournaments
+-- MAGIC Tournament results parsed from GGPoker tournament history files
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.tournaments (
     -- Primary key

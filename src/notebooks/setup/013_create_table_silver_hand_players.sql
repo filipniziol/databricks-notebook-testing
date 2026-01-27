@@ -1,7 +1,9 @@
--- Migration: 013_create_table_silver_hand_players
--- Description: Players per hand - allows calculating VPIP, PFR, etc. for all players
--- Source: bronze.hand_history -> Seat lines + actions
--- KEY: seat number allows mapping anonymized player to screenshot player at same seat
+-- Databricks notebook source
+-- MAGIC %md
+-- MAGIC # Create Silver Table: hand_players
+-- MAGIC Players per hand - allows calculating VPIP, PFR, etc. Seat number maps to screenshot player
+
+-- COMMAND ----------
 
 CREATE TABLE IF NOT EXISTS poker.silver.hand_players (
     -- Composite primary key

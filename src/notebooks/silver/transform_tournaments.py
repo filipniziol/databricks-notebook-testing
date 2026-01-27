@@ -117,8 +117,6 @@ df_silver = df_valid.select(
     current_timestamp().alias("ingested_at"),
 )
 
-df_silver.display()
-
 # COMMAND ----------
 
 # MAGIC %md
