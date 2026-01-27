@@ -17,6 +17,13 @@
 - New migrations = new numbered notebook (e.g., `005_create_table_xyz.sql`)
 - Never modify existing migration numbers - always add new ones
 
+### One Object Per Migration (CRITICAL)
+- **Each migration file should create exactly ONE object** (1 table, 1 view, 1 schema)
+- Never put multiple CREATE statements in one migration
+- This makes tracking, debugging, and re-running easier
+- Bad: `015_create_views_gold.sql` with 4 views
+- Good: `015_create_view_tournament_analysis.sql`, `016_create_view_tournament_summary_by_stage.sql`
+
 ### SQL Notebook Header (CRITICAL)
 - **EVERY .sql file MUST start with `-- Databricks notebook source`**
 - Without this header, Databricks cannot run the file as a notebook
