@@ -3,6 +3,7 @@
 -- MAGIC # Create Gold View: rush_allin_call_analysis
 -- MAGIC 
 -- MAGIC When to_call > 50% of hero stack and GPT recommends call/raise in Rush stage
+-- MAGIC Groups by normalized hand type (e.g., AKs, 76s, JJ)
 
 -- COMMAND ----------
 
@@ -37,36 +38,62 @@ WITH allin_situations AS (
       AND s.gpt_action IN ('call', 'raise')  -- GPT says to play
 ),
 
--- Categorize hands
-categorized AS (
+-- Normalize hands (e.g., AhKs -> AKo, 7d7c -> 77)
+normalized AS (
+    SELECT 
+        *,
+        -- Extract ranks and suits
+        SUBSTR(hero_cards, 1, 1) AS rank1,
+        SUBSTR(hero_cards, 2, 1) AS suit1,
+        SUBSTR(hero_cards, 3, 1) AS rank2,
+        SUBSTR(hero_cards, 4, 1) AS suit2,
+        -- Check if suited
+        CASE WHEN SUBSTR(hero_cards, 2, 1) = SUBSTR(hero_cards, 4, 1) THEN true ELSE false END AS is_suited,
+        -- Check if pair
+        CASE WHEN SUBSTR(hero_cards, 1, 1) = SUBSTR(hero_cards, 3, 1) THEN true ELSE false END AS is_pair
+    FROM allin_situations
+),
+
+-- Build hand notation with proper rank ordering
+with_notation AS (
+    SELECT 
+        *,
+        -- Assign numeric values to ranks for proper ordering
+        CASE rank1 
+            WHEN 'A' THEN 14 WHEN 'K' THEN 13 WHEN 'Q' THEN 12 WHEN 'J' THEN 11 WHEN 'T' THEN 10
+            ELSE CAST(rank1 AS INT)
+        END AS rank1_val,
+        CASE rank2
+            WHEN 'A' THEN 14 WHEN 'K' THEN 13 WHEN 'Q' THEN 12 WHEN 'J' THEN 11 WHEN 'T' THEN 10
+            ELSE CAST(rank2 AS INT)
+        END AS rank2_val
+    FROM normalized
+),
+
+with_hand_type AS (
     SELECT 
         *,
         CASE 
-            WHEN hero_cards RLIKE '^(A[A-Z]|K[K-Z]|Q[Q-Z]|J[J-Z]|T[T-Z]|[2-9][2-9])' 
-                 AND SUBSTR(hero_cards, 1, 1) = SUBSTR(hero_cards, 3, 1) THEN 'pair'
-            WHEN hero_cards LIKE 'A%' THEN 'ace_high'
-            WHEN hero_cards LIKE 'K%' THEN 'king_high'
-            WHEN SUBSTR(hero_cards, 2, 1) = SUBSTR(hero_cards, 4, 1) THEN 'suited'
-            ELSE 'offsuit'
-        END AS hand_category,
-        CASE 
-            WHEN hero_cards RLIKE '^(AA|KK|QQ|JJ|TT|AK|AQ)' THEN 'premium'
-            WHEN hero_cards RLIKE '^(99|88|77|66|AJ|AT|KQ|KJ)' THEN 'strong'
-            WHEN hero_cards RLIKE '^(55|44|33|22|A[2-9]|K[T-9]|Q[J-9])' THEN 'medium'
-            ELSE 'speculative'
-        END AS hand_strength
-    FROM allin_situations
+            WHEN is_pair THEN CONCAT(rank1, rank1)
+            WHEN is_suited THEN 
+                CASE 
+                    WHEN rank1_val >= rank2_val THEN CONCAT(rank1, rank2, 's')
+                    ELSE CONCAT(rank2, rank1, 's')
+                END
+            ELSE 
+                CASE 
+                    WHEN rank1_val >= rank2_val THEN CONCAT(rank1, rank2, 'o')
+                    ELSE CONCAT(rank2, rank1, 'o')
+                END
+        END AS hand_type
+    FROM with_notation
 )
 
 SELECT
-    hand_strength,
+    hand_type,
     
     -- Sample size
     COUNT(*) AS total_situations,
-    
-    -- GPT recommendation breakdown
-    SUM(CASE WHEN gpt_action = 'call' THEN 1 ELSE 0 END) AS gpt_said_call,
-    SUM(CASE WHEN gpt_action = 'raise' THEN 1 ELSE 0 END) AS gpt_said_raise,
     
     -- Did hero follow GPT?
     SUM(CASE WHEN hero_action IN ('call', 'raise') THEN 1 ELSE 0 END) AS hero_played,
@@ -85,14 +112,9 @@ SELECT
     ROUND(AVG(CASE WHEN hero_action IN ('call', 'raise') THEN net_profit / big_blind END), 1) AS avg_net_bb_per_hand,
     
     -- Average stack commitment
-    ROUND(AVG(pct_of_stack), 1) AS avg_pct_of_stack_committed
+    ROUND(AVG(pct_of_stack), 1) AS avg_pct_of_stack
 
-FROM categorized
-GROUP BY hand_strength
-ORDER BY 
-    CASE hand_strength 
-        WHEN 'premium' THEN 1 
-        WHEN 'strong' THEN 2 
-        WHEN 'medium' THEN 3 
-        ELSE 4 
-    END;
+FROM with_hand_type
+GROUP BY hand_type
+HAVING COUNT(*) >= 2  -- At least 2 occurrences
+ORDER BY total_net_bb DESC;
