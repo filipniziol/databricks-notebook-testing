@@ -60,6 +60,23 @@ def parse_hand_history(raw_content: str, file_name: str) -> list:
         for hand in hands:
             hand_dict = hand.to_dict()
             
+            # Check if hero folded
+            hero_folded = False
+            hero_result_info = next(
+                (r for r in hand_dict["results"] if r["player_name"] == hand.hero_name),
+                None
+            ) if hand.hero_name else None
+            if hero_result_info and hero_result_info.get("folded"):
+                hero_folded = True
+            
+            # Determine hero result
+            if hand_dict["hero_won"]:
+                hero_result = "won"
+            elif hero_folded:
+                hero_result = "folded"
+            else:
+                hero_result = "lost"  # Went to showdown and lost
+            
             # Build main hand record
             hand_record = {
                 "hand_id": hand_dict["hand_id"],
@@ -81,7 +98,7 @@ def parse_hand_history(raw_content: str, file_name: str) -> list:
                 "hero_position": hand_dict["hero_position"],
                 "hero_cards": "".join(hand_dict["hero_cards"]) if hand_dict["hero_cards"] else None,
                 "hero_chips_start": float(hand_dict["hero_stack"]) if hand_dict["hero_stack"] else None,
-                "hero_result": "won" if hand_dict["hero_won"] else ("folded" if not hand_dict["went_to_showdown"] else "lost"),
+                "hero_result": hero_result,
                 "file_name": file_name,
             }
             

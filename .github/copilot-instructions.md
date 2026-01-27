@@ -88,6 +88,63 @@ poker_analyzer/
     └── package/       # Python modules for imports
 ```
 
+---
+
+## Setup Notebooks Reference (000-023)
+
+All setup notebooks live in `src/notebooks/setup/` and run in numerical order via `run_all_setup.py`.
+
+### Infrastructure (000-004)
+| File | Object | Description |
+|------|--------|-------------|
+| `000_create_migrations_table.sql` | `poker.bronze._migrations` | Tracks which migrations have been executed (prevents re-runs) |
+| `001_create_catalog_poker.sql` | `poker` catalog | Main catalog for all poker data |
+| `002_create_schema_bronze.sql` | `poker.bronze` schema + volume | Raw data layer |
+| `003_create_schema_silver.sql` | `poker.silver` schema + volume | Processed/matched data layer |
+| `004_create_schema_gold.sql` | `poker.gold` schema + volume | Analytics/aggregations layer |
+
+### Bronze Tables (005-007)
+| File | Table | Description |
+|------|-------|-------------|
+| `005_create_table_bronze_analysis_result.sql` | `poker.bronze.analysis_result` | Raw JSON from screenshot analyzer |
+| `006_create_table_bronze_hand_history.sql` | `poker.bronze.hand_history` | Raw text from GGPoker hand history |
+| `007_create_table_bronze_tournament_history.sql` | `poker.bronze.tournament_history` | Raw text from GGPoker tournament results |
+
+### Silver Tables (008-014, 019)
+| File | Table | Description |
+|------|-------|-------------|
+| `008_create_table_silver_screenshots.sql` | `poker.silver.screenshots` | Main screenshot data with hero + GPT advice |
+| `009_create_table_silver_screenshot_players.sql` | `poker.silver.screenshot_players` | Opponents per screenshot (1:N) |
+| `010_create_table_silver_screenshot_history.sql` | `poker.silver.screenshot_history` | Hand history per street per screenshot |
+| `011_create_table_silver_tournaments.sql` | `poker.silver.tournaments` | Parsed tournament results |
+| `012_create_table_silver_hands.sql` | `poker.silver.hands` | Hand headers - one row per hand |
+| `013_create_table_silver_hand_players.sql` | `poker.silver.hand_players` | Players per hand with VPIP, PFR, etc. |
+| `014_create_table_silver_hand_actions.sql` | `poker.silver.hand_actions` | Individual actions per hand |
+| `019_create_table_silver_screenshot_hand_mapping.sql` | `poker.silver.screenshot_hand_mapping` | Bridge: screenshots → hands (n:1) |
+
+### Functions (020)
+| File | Function | Description |
+|------|----------|-------------|
+| `020_create_poker_evaluation_functions.sql` | `poker.utils.evaluate_hand` | Evaluates hole cards + board → hand rank + name |
+| | `poker.utils.compare_hands` | Compares hero vs array of opponents → winner |
+
+### Gold Views - Tournament Analysis (015-018)
+| File | View | Description |
+|------|------|-------------|
+| `015_create_view_gold_tournament_analysis.sql` | `poker.gold.tournament_analysis` | Tournament results with stage breakdown, bounty vs position |
+| `016_create_view_gold_tournament_summary_by_stage.sql` | `poker.gold.tournament_summary_by_stage` | Stats aggregated by finish stage |
+| `017_create_view_gold_tournament_summary_by_buyin.sql` | `poker.gold.tournament_summary_by_buyin` | Stats aggregated by buyin level ($10 vs $25) |
+| `018_create_view_gold_tournament_summary_daily.sql` | `poker.gold.tournament_summary_daily` | Daily P&L tracking |
+
+### Gold Views - GPT Analysis (021-023)
+| File | View | Description |
+|------|------|-------------|
+| `021_create_view_gold_screenshot_hand_analysis.sql` | `poker.gold.screenshot_hand_analysis` | GPT advice vs actual outcome (did hero follow? was it profitable?) |
+| `022_create_view_gold_hand_line_analysis.sql` | `poker.gold.hand_line_analysis` | Full hand line analysis - all GPT recs vs hero actions per hand |
+| `023_create_view_gold_fold_showdown_analysis.sql` | `poker.gold.fold_showdown_analysis` | "What if" analysis - when hero folded but showdown happened |
+
+---
+
 ### Variables
 - Always use variables for values that might change between environments
 - Define in `databricks.yml` under `variables:` with defaults

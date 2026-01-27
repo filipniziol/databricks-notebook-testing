@@ -331,7 +331,83 @@ Inject into GPT prompt for real-time adjustment.
 
 ## Data Architecture
 
-### Tables
+### Implemented Schema (as of 2026-01-27)
+
+All objects are created by numbered migration notebooks in `src/notebooks/setup/`.
+
+#### Catalog & Schemas
+```
+poker (catalog)
+├── bronze   - Raw data layer (JSON/text files as-is)
+├── silver   - Processed/matched data
+├── gold     - Analytics views
+└── utils    - Python UDFs for hand evaluation
+```
+
+#### Bronze Layer (Raw Data)
+| Table | Source | Description |
+|-------|--------|-------------|
+| `bronze.analysis_result` | Screenshot JSONs | Raw JSON from screenshot analyzer |
+| `bronze.hand_history` | GGPoker .txt | Raw hand history text files |
+| `bronze.tournament_history` | GGPoker .txt | Raw tournament result files |
+| `bronze._migrations` | System | Tracks executed migrations |
+
+#### Silver Layer (Processed)
+| Table | Source | Description |
+|-------|--------|-------------|
+| `silver.screenshots` | analysis_result | Main screenshot data: hero cards, GPT advice, pot, etc. |
+| `silver.screenshot_players` | analysis_result | Opponents per screenshot (1:N) |
+| `silver.screenshot_history` | analysis_result | Hand history per street per screenshot |
+| `silver.tournaments` | tournament_history | Parsed tournament results with ROI |
+| `silver.hands` | hand_history | Hand headers - one row per hand |
+| `silver.hand_players` | hand_history | Players per hand with VPIP, PFR, result |
+| `silver.hand_actions` | hand_history | Individual actions (fold, call, raise) |
+| `silver.screenshot_hand_mapping` | join | Bridge table: screenshots → hands (n:1) |
+
+**Screenshot-Hand Mapping:**
+- Matches screenshots to hand history by: cards + position + timestamp (±5 min)
+- Confidence levels: `high` (cards+pos+time), `medium` (cards+time), `low`
+- Current match rate: ~97%
+
+#### Gold Layer (Analytics)
+
+**Tournament Analysis:**
+| View | Purpose |
+|------|---------|
+| `gold.tournament_analysis` | Tournament results with stage breakdown, bounty vs position prize |
+| `gold.tournament_summary_by_stage` | Stats by finish stage (champion, runner-up, bubble, etc.) |
+| `gold.tournament_summary_by_buyin` | Stats by buyin level ($10 vs $25) |
+| `gold.tournament_summary_daily` | Daily P&L tracking |
+
+**GPT Decision Analysis:**
+| View | Purpose |
+|------|---------|
+| `gold.screenshot_hand_analysis` | GPT advice vs actual outcome per decision |
+| `gold.hand_line_analysis` | Full hand line - all GPT recs vs hero actions |
+| `gold.fold_showdown_analysis` | "What if" - hero folded but showdown happened |
+
+**Key columns in `screenshot_hand_analysis`:**
+- `followed_gpt_advice`: BOOLEAN - did hero do what GPT said?
+- `outcome_category`: ignored_fold_won, ignored_fold_lost, followed_play_won, etc.
+- `profit_bb`: profit/loss in big blinds
+- `missed_pot_bb`: pot hero missed when folding
+
+**Key columns in `fold_showdown_analysis`:**
+- `hero_would_have_won`: BOOLEAN - simulation of showdown
+- `potential_profit_bb`: what hero would have won/lost
+- `hero_hand_at_showdown`: hero's hand strength
+
+#### Utils Schema (Python UDFs)
+| Function | Signature | Returns |
+|----------|-----------|---------|
+| `utils.evaluate_hand` | `(hole_cards STRING, board STRING)` | `STRUCT<rank, hand_class, hand_name>` |
+| `utils.compare_hands` | `(hero_cards STRING, opponent_cards ARRAY<STRING>, board STRING)` | `STRUCT<winner_index, hero_rank, hero_hand, winning_rank, winning_hand, hero_would_win>` |
+
+---
+
+### Tables (Design Document)
+
+_Note: Below is the original design. See above for implemented schema._
 
 ```sql
 -- Silver: Cleaned facts
