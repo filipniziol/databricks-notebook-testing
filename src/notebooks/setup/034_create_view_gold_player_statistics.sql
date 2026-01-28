@@ -65,6 +65,10 @@ final_table_stats AS (
     SELECT 
         player_name,
         SUM(CASE WHEN stage = 'final' THEN 1 ELSE 0 END) AS ft_hands,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'final' AND vpip = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'final' THEN 1 ELSE 0 END), 0), 1) AS ft_vpip_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'final' AND pfr = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'final' THEN 1 ELSE 0 END), 0), 1) AS ft_pfr_pct,
         ROUND(100.0 * SUM(CASE WHEN stage = 'final' AND went_allin = true THEN 1 ELSE 0 END) / 
             NULLIF(SUM(CASE WHEN stage = 'final' THEN 1 ELSE 0 END), 0), 1) AS ft_allin_pct,
         -- Shove by stack depth
@@ -82,6 +86,27 @@ final_table_stats AS (
         -- Open shove %
         ROUND(100.0 * SUM(CASE WHEN stage = 'final' AND preflop_shove = true THEN 1 ELSE 0 END) / 
             NULLIF(SUM(CASE WHEN stage = 'final' AND pfr = true THEN 1 ELSE 0 END), 0), 1) AS ft_open_shove_pct
+    FROM poker.gold.player_hand_stats
+    GROUP BY player_name
+),
+
+rush_stats AS (
+    SELECT 
+        player_name,
+        SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END) AS rush_hands,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND vpip = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END), 0), 1) AS rush_vpip_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND pfr = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END), 0), 1) AS rush_pfr_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND three_bet = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END), 0), 1) AS rush_3bet_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND went_allin = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END), 0), 1) AS rush_allin_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND went_to_showdown = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' THEN 1 ELSE 0 END), 0), 1) AS rush_wtsd_pct,
+        ROUND(100.0 * SUM(CASE WHEN stage = 'rush' AND won_hand = true AND went_to_showdown = true THEN 1 ELSE 0 END) / 
+            NULLIF(SUM(CASE WHEN stage = 'rush' AND went_to_showdown = true THEN 1 ELSE 0 END), 0), 1) AS rush_wsd_pct,
+        SUM(CASE WHEN stage = 'rush' THEN net_profit ELSE 0 END) AS rush_net_profit
     FROM poker.gold.player_hand_stats
     GROUP BY player_name
 ),
@@ -128,8 +153,19 @@ SELECT
     p.open_raise_late_pct,
     p.sb_open_pct,
     p.bb_defend_pct,
-    -- Final Table
+    -- Rush stats
+    r.rush_hands,
+    r.rush_vpip_pct,
+    r.rush_pfr_pct,
+    r.rush_3bet_pct,
+    r.rush_allin_pct,
+    r.rush_wtsd_pct,
+    r.rush_wsd_pct,
+    r.rush_net_profit,
+    -- Final Table stats
     f.ft_hands,
+    f.ft_vpip_pct,
+    f.ft_pfr_pct,
     f.ft_allin_pct,
     f.ft_shove_short_pct,
     f.ft_shove_medium_pct,
@@ -139,6 +175,7 @@ SELECT
     f.ft_open_shove_pct
 FROM basic_stats b
 LEFT JOIN position_stats p ON b.player_name = p.player_name
+LEFT JOIN rush_stats r ON b.player_name = r.player_name
 LEFT JOIN final_table_stats f ON b.player_name = f.player_name
 LEFT JOIN player_types pt ON b.player_name = pt.player_name
 WHERE b.total_hands >= 10
