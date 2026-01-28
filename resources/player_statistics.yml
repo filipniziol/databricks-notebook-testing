@@ -1,0 +1,23 @@
+# Player identity and statistics job configuration
+# Build player identity mapping and refresh statistics
+
+resources:
+  jobs:
+    player_statistics:
+      name: "player_statistics"
+      description: "Build player identity mapping and compute player statistics"
+      tags:
+        project: poker_analyzer
+        layer: silver_gold
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+
+      tasks:
+        - task_key: build_player_identity
+          description: "Map real player names to anonymized IDs using seat matching"
+          notebook_task:
+            notebook_path: ../src/notebooks/silver/transform_player_identity.sql
+          environment_key: serverless
