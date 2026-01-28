@@ -178,5 +178,4 @@ LEFT JOIN position_stats p ON b.player_name = p.player_name
 LEFT JOIN rush_stats r ON b.player_name = r.player_name
 LEFT JOIN final_table_stats f ON b.player_name = f.player_name
 LEFT JOIN player_types pt ON b.player_name = pt.player_name
-WHERE b.total_hands >= 10
 ORDER BY b.total_hands DESC;
