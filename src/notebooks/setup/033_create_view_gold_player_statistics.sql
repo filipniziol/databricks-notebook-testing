@@ -9,7 +9,7 @@
 -- MAGIC - `hand_actions` - all actions with amounts, is_allin
 -- MAGIC - `hands` - big_blind for BB conversion
 -- MAGIC - `screenshots` - stage (rush/final) via mapping
--- MAGIC - `player_identity` - maps anonymous IDs to real names
+-- MAGIC - `player_identity` - per-hand mapping of real names to anonymous IDs
 -- MAGIC 
 -- MAGIC Use this view to verify stats for a specific hand:
 -- MAGIC ```sql
@@ -95,7 +95,8 @@ SELECT
 
 FROM poker.silver.player_identity pi
 JOIN poker.silver.hand_players hp 
-    ON pi.anonymous_id = hp.player_name
+    ON pi.hand_id = hp.hand_id 
+    AND pi.anonymous_id = hp.player_name
 JOIN poker.silver.hands h 
     ON hp.hand_id = h.hand_id
 LEFT JOIN action_agg aa 
@@ -103,6 +104,5 @@ LEFT JOIN action_agg aa
 LEFT JOIN poker.silver.screenshot_hand_mapping m 
     ON h.hand_id = m.hand_id
 LEFT JOIN poker.silver.screenshots s 
-    ON m.file_name = s.file_name
-WHERE pi.match_confidence = 'HIGH';
+    ON m.file_name = s.file_name;
 
