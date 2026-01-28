@@ -8,6 +8,11 @@
 - Commit messages - English
 - README, docstrings - English
 
+### Databricks Queries
+- **Copilot cannot run SQL queries directly** - ask the user to execute them
+- When debugging data issues, provide the SQL query and ask user to run it and share results
+- Example: "Could you run this query and share the results? `SELECT * FROM poker.gold.player_statistics WHERE player_name = 'XYZ'`"
+
 ## Databricks Asset Bundle Tips
 
 ### Naming Conventions
