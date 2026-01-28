@@ -101,8 +101,6 @@ JOIN poker.silver.hands h
     ON hp.hand_id = h.hand_id
 LEFT JOIN action_agg aa 
     ON hp.hand_id = aa.hand_id AND hp.player_name = aa.anonymous_id
-LEFT JOIN poker.silver.screenshot_hand_mapping m 
-    ON h.hand_id = m.hand_id
 LEFT JOIN poker.silver.screenshots s 
-    ON m.file_name = s.file_name;
+    ON pi.file_name = s.file_name;
 
