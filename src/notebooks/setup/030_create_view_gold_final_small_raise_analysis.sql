@@ -3,7 +3,7 @@
 -- MAGIC # Create Gold View: final_small_raise_analysis
 -- MAGIC 
 -- MAGIC When GPT says raise 2-3BB on Final Table, track what happens next
--- MAGIC Focus: How often does hero open/fold when big stacks are behind?
+-- MAGIC Focus: How often does hero open/fold when big stacks are BEHIND (yet to act)?
 
 -- COMMAND ----------
 
@@ -36,21 +36,37 @@ WITH small_raise_situations AS (
       AND (s.gpt_recommendation LIKE '%2.%BB%' OR s.gpt_recommendation LIKE '%2 BB%' OR s.gpt_recommendation LIKE '%3%BB%')
 ),
 
--- Get max opponent stack for each hand (in BB)
-opponent_stacks AS (
+-- Get max opponent stack BEHIND hero (based on position)
+-- Position order: UTG=1, UTG+1=2, HJ=3, CO=4, BTN=5, SB=6, BB=7
+-- Players "behind" = positions > hero_position (except BB which is always behind SB)
+opponent_stacks_behind AS (
     SELECT 
-        hp.hand_id,
-        MAX(CASE WHEN hp.is_hero = false THEN hp.chips_start / h.big_blind END) AS max_opponent_stack
-    FROM poker.silver.hand_players hp
-    JOIN poker.silver.hands h ON hp.hand_id = h.hand_id
-    GROUP BY hp.hand_id
+        sr.file_name,
+        sr.hero_pos,
+        MAX(hp.chips_start / h.big_blind) AS max_stack_behind
+    FROM small_raise_situations sr
+    JOIN poker.silver.hand_players hp ON sr.hand_id = hp.hand_id AND hp.is_hero = false
+    JOIN poker.silver.hands h ON sr.hand_id = h.hand_id
+    WHERE 
+        -- Determine if opponent is BEHIND hero based on positions
+        CASE sr.hero_pos
+            WHEN 'UTG' THEN hp.position IN ('UTG+1', 'HJ', 'MP', 'CO', 'BTN', 'SB', 'BB')
+            WHEN 'UTG+1' THEN hp.position IN ('HJ', 'MP', 'CO', 'BTN', 'SB', 'BB')
+            WHEN 'HJ' THEN hp.position IN ('CO', 'BTN', 'SB', 'BB')
+            WHEN 'MP' THEN hp.position IN ('CO', 'BTN', 'SB', 'BB')
+            WHEN 'CO' THEN hp.position IN ('BTN', 'SB', 'BB')
+            WHEN 'BTN' THEN hp.position IN ('SB', 'BB')
+            WHEN 'SB' THEN hp.position IN ('BB')
+            ELSE false
+        END
+    GROUP BY sr.file_name, sr.hero_pos
 ),
 
 -- Get hero's actual actions in this hand
 with_hero_actions AS (
     SELECT 
         sr.*,
-        os.max_opponent_stack,
+        osb.max_stack_behind,
         -- Did hero raise preflop?
         MAX(CASE WHEN ha.street = 'preflop' AND ha.action_type = 'raise' THEN 1 ELSE 0 END) AS hero_raised_preflop,
         -- Did hero fold later?
@@ -58,13 +74,13 @@ with_hero_actions AS (
         -- Count hero actions
         COUNT(DISTINCT ha.action_order) AS hero_action_count
     FROM small_raise_situations sr
-    LEFT JOIN opponent_stacks os ON sr.hand_id = os.hand_id
+    LEFT JOIN opponent_stacks_behind osb ON sr.file_name = osb.file_name
     LEFT JOIN poker.silver.hand_actions ha ON sr.hand_id = ha.hand_id AND ha.is_hero = true
         AND ha.action_type NOT IN ('post_ante', 'post_sb', 'post_bb', 'show')
     GROUP BY sr.file_name, sr.screenshot_at, sr.hero_cards, sr.hero_pos, sr.hero_stack,
              sr.pot, sr.to_call, sr.gpt_action, sr.gpt_recommendation, sr.hand_id,
              sr.hero_result, sr.big_blind, sr.total_pot, sr.net_profit, sr.went_to_showdown,
-             os.max_opponent_stack
+             osb.max_stack_behind
 ),
 
 -- Categorize outcome
@@ -78,10 +94,10 @@ categorized AS (
             WHEN hero_raised_preflop = 0 THEN 'did_not_raise'
             ELSE 'other'
         END AS outcome_type,
-        -- Stack ratio: is there a big stack that covers hero significantly?
+        -- Is there a big stack BEHIND that covers hero significantly?
         CASE 
-            WHEN COALESCE(max_opponent_stack, 0) > hero_stack * 1.5 THEN 'big_stack_at_table'
-            ELSE 'no_big_stack'
+            WHEN COALESCE(max_stack_behind, 0) > hero_stack * 1.5 THEN 'big_stack_behind'
+            ELSE 'no_big_stack_behind'
         END AS stack_situation,
         -- Hero stack category
         CASE 
@@ -106,8 +122,8 @@ SELECT
     
     -- Stack info
     ROUND(AVG(hero_stack), 1) AS avg_hero_stack,
-    ROUND(AVG(max_opponent_stack), 1) AS avg_max_opponent_stack
+    ROUND(AVG(max_stack_behind), 1) AS avg_max_stack_behind
 
 FROM categorized
 GROUP BY outcome_type, stack_situation, hero_stack_category
-ORDER BY outcome_type, hero_stack_category;
+ORDER BY outcome_type, stack_situation, hero_stack_category;
