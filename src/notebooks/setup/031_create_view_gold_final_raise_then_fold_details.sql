@@ -57,7 +57,7 @@ opponent_stacks_behind AS (
 shover_info AS (
     SELECT 
         sr.file_name,
-        FIRST(ha.position) AS shover_pos,
+        FIRST(hp.position) AS shover_pos,
         FIRST(ROUND(hp.chips_start / h.big_blind, 1)) AS shover_stack,
         FIRST(hp.vpip) AS shover_vpip
     FROM small_raise_situations sr
