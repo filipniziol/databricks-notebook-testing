@@ -91,6 +91,7 @@ with_actions AS (
 )
 
 SELECT 
+    file_name,
     hero_cards,
     hero_pos,
     ROUND(hero_stack, 1) AS hero_stack,
