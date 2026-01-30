@@ -38,7 +38,7 @@ mlflow.set_tracking_uri("databricks")
 mlflow.set_registry_uri("databricks-uc")
 
 # Set experiment
-EXPERIMENT_NAME = "/Shared/player_clustering"
+EXPERIMENT_NAME = "/Shared/experiments/player_clustering"
 mlflow.set_experiment(EXPERIMENT_NAME)
 print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 
@@ -58,19 +58,19 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-# Load player statistics as features
+# Load player statistics and cast DECIMAL to DOUBLE for MLflow compatibility
 df_features = spark.sql("""
-    SELECT 
+    SELECT
         player_name,
         total_hands,
-        vpip_pct,
-        pfr_pct,
-        three_bet_pct,
-        aggression_factor,
-        wtsd_pct,
-        wsd_pct,
-        allin_pct,
-        avg_preflop_raise_bb,
+        CAST(vpip_pct AS DOUBLE) as vpip_pct,
+        CAST(pfr_pct AS DOUBLE) as pfr_pct,
+        CAST(three_bet_pct AS DOUBLE) as three_bet_pct,
+        CAST(aggression_factor AS DOUBLE) as aggression_factor,
+        CAST(wtsd_pct AS DOUBLE) as wtsd_pct,
+        CAST(wsd_pct AS DOUBLE) as wsd_pct,
+        CAST(allin_pct AS DOUBLE) as allin_pct,
+        CAST(avg_preflop_raise_bb AS DOUBLE) as avg_preflop_raise_bb,
         current_timestamp() as feature_timestamp
     FROM poker.gold.player_statistics
 """)
@@ -81,28 +81,21 @@ print(f"Total players: {df_features.count()}")
 
 # Create or update Feature Table
 # Primary key is player_name - unique identifier
+# Drop existing table first to ensure schema change (DECIMAL -> DOUBLE)
 
 try:
-    # Try to create new feature table
-    fe.create_table(
-        name=FEATURE_TABLE_NAME,
-        primary_keys=["player_name"],
-        timestamp_keys=["feature_timestamp"],
-        df=df_features,
-        description="Player statistics features for clustering model"
-    )
-    print(f"Created new feature table: {FEATURE_TABLE_NAME}")
-except Exception as e:
-    if "already exists" in str(e):
-        # Update existing table
-        fe.write_table(
-            name=FEATURE_TABLE_NAME,
-            df=df_features,
-            mode="overwrite"
-        )
-        print(f"Updated existing feature table: {FEATURE_TABLE_NAME}")
-    else:
-        raise e
+    spark.sql(f"DROP TABLE IF EXISTS {FEATURE_TABLE_NAME}")
+    print(f"Dropped existing table (if any) to update schema")
+except:
+    pass
+
+fe.create_table(
+    name=FEATURE_TABLE_NAME,
+    primary_keys=["player_name"],
+    df=df_features,
+    description="Player statistics features for clustering model"
+)
+print(f"Created feature table: {FEATURE_TABLE_NAME}")
 
 # COMMAND ----------
 
@@ -208,13 +201,30 @@ plt.show()
 
 # COMMAND ----------
 
+# Choose optimal K using Elbow Method (second derivative / knee detection)
+# We want at least 3 clusters for meaningful player types
+MIN_K = 3
+
+# Calculate rate of change (first derivative)
+inertia_changes = np.diff(inertias)
+# Calculate acceleration (second derivative) - elbow is where this is maximum
+inertia_acceleration = np.diff(inertia_changes)
+
+# Find elbow point (max acceleration) but enforce MIN_K
+# K_range starts at 2, so index 0 = K=2, index 1 = K=3, etc.
+elbow_idx = np.argmax(np.abs(inertia_acceleration)) + 1  # +1 because diff reduces length
+OPTIMAL_K = max(MIN_K, list(K_range)[elbow_idx])
+
+print(f"Elbow Method suggests K={list(K_range)[elbow_idx]}")
+print(f"Using K={OPTIMAL_K} (min={MIN_K})")
+print(f"Silhouette at K={OPTIMAL_K}: {silhouettes[list(K_range).index(OPTIMAL_K)]:.3f}")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7. Train Final Model with Feature Store Integration
 
 # COMMAND ----------
-
-# Choose optimal K (adjust based on plots above)
-OPTIMAL_K = 5
 
 print(f"Training K-Means with K={OPTIMAL_K}")
 
@@ -235,6 +245,10 @@ training_set = fe.create_training_set(
 
 # Load training data from Feature Store
 training_df = training_set.load_df().toPandas()
+
+# Convert Decimal columns to float (fixes np.isnan issue)
+for col in FEATURE_COLUMNS:
+    training_df[col] = training_df[col].astype(float)
 
 # Prepare features
 X_train_fs = training_df[FEATURE_COLUMNS].values
@@ -265,12 +279,16 @@ with mlflow.start_run(run_name=f"kmeans_k{OPTIMAL_K}_with_features") as run:
     mlflow.log_metric("silhouette_score", train_silhouette)
     mlflow.log_metric("inertia", kmeans.inertia_)
     
-    # Log model with Feature Store - this creates lineage!
-    fe.log_model(
-        model=kmeans,
+    # Create input example for signature inference (required for Unity Catalog)
+    # MLflow will infer both input AND output schema from the example
+    input_example = pd.DataFrame(X_train_fs_scaled[:5], columns=FEATURE_COLUMNS)
+    
+    # Log model with sklearn flavor (fe.log_model doesn't work for unsupervised)
+    # Using input_example auto-infers signature with both input and output
+    mlflow.sklearn.log_model(
+        sk_model=kmeans,
         artifact_path="model",
-        flavor=mlflow.sklearn,
-        training_set=training_set,
+        input_example=input_example,
         registered_model_name=MODEL_NAME
     )
     
