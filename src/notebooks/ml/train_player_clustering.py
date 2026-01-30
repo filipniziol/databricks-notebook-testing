@@ -38,7 +38,7 @@ mlflow.set_tracking_uri("databricks")
 mlflow.set_registry_uri("databricks-uc")
 
 # Set experiment
-EXPERIMENT_NAME = "/Shared/poker_analyzer/player_clustering"
+EXPERIMENT_NAME = "/Shared/player_clustering"
 mlflow.set_experiment(EXPERIMENT_NAME)
 print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 
