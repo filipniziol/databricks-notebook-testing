@@ -51,28 +51,31 @@ print(f"Output: {OUTPUT_TABLE}")
 # COMMAND ----------
 
 # Load model using alias (production-safe)
+# Unity Catalog doesn't support "latest" - must use alias or version number
 model_uri = f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
+run_id = None
 
 try:
+    # Try loading by alias first
+    model_version_info = client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
     pipeline = mlflow.sklearn.load_model(model_uri)
+    run_id = model_version_info.run_id
     print(f"Loaded model: {model_uri}")
 except Exception as e:
-    # Fallback to latest version if alias not set
-    print(f"Alias '{MODEL_ALIAS}' not found, using latest version")
-    model_uri = f"models:/{MODEL_NAME}/latest"
-    pipeline = mlflow.sklearn.load_model(model_uri)
-    print(f"Loaded model: {model_uri}")
-
-# Get run_id to load cluster definitions artifact
-model_version_info = client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS) if MODEL_ALIAS else None
-if model_version_info:
-    run_id = model_version_info.run_id
-else:
-    # Get latest version run_id
+    # Fallback: get latest version by searching model versions
+    print(f"Alias '{MODEL_ALIAS}' not found, searching for latest version...")
     versions = client.search_model_versions(f"name='{MODEL_NAME}'")
-    run_id = versions[0].run_id
+    if not versions:
+        raise ValueError(f"No versions found for model {MODEL_NAME}")
+    
+    # Sort by version number (descending) and get the latest
+    latest_version = sorted(versions, key=lambda v: int(v.version), reverse=True)[0]
+    model_uri = f"models:/{MODEL_NAME}/{latest_version.version}"
+    pipeline = mlflow.sklearn.load_model(model_uri)
+    run_id = latest_version.run_id
+    print(f"Loaded model: {model_uri} (version {latest_version.version})")
 
-# Load cluster definitions from artifact
+# Load cluster definitions from artifact (run_id already set above)
 artifact_path = client.download_artifacts(run_id, "cluster_definitions.json")
 with open(artifact_path, 'r') as f:
     cluster_definitions = json.load(f)
