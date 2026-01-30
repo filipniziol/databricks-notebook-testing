@@ -15,24 +15,24 @@ WITH hand_categories AS (
         CASE 
             WHEN is_pocket_pair = 1 THEN 
                 CONCAT(
-                    CASE high_card_rank 
+                    CASE CAST(high_card_rank AS INT) 
                         WHEN 14 THEN 'A' WHEN 13 THEN 'K' WHEN 12 THEN 'Q' 
-                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(high_card_rank AS STRING) 
+                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(CAST(high_card_rank AS INT) AS STRING) 
                     END,
-                    CASE high_card_rank 
+                    CASE CAST(high_card_rank AS INT) 
                         WHEN 14 THEN 'A' WHEN 13 THEN 'K' WHEN 12 THEN 'Q' 
-                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(high_card_rank AS STRING) 
+                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(CAST(high_card_rank AS INT) AS STRING) 
                     END
                 )
             ELSE
                 CONCAT(
-                    CASE high_card_rank 
+                    CASE CAST(high_card_rank AS INT) 
                         WHEN 14 THEN 'A' WHEN 13 THEN 'K' WHEN 12 THEN 'Q' 
-                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(high_card_rank AS STRING) 
+                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(CAST(high_card_rank AS INT) AS STRING) 
                     END,
-                    CASE low_card_rank 
+                    CASE CAST(low_card_rank AS INT) 
                         WHEN 14 THEN 'A' WHEN 13 THEN 'K' WHEN 12 THEN 'Q' 
-                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(low_card_rank AS STRING) 
+                        WHEN 11 THEN 'J' WHEN 10 THEN 'T' ELSE CAST(CAST(low_card_rank AS INT) AS STRING) 
                     END,
                     CASE WHEN is_suited = 1 THEN 's' ELSE 'o' END
                 )
@@ -69,8 +69,8 @@ SELECT
     ROUND(STDDEV(profit_bb), 2) AS stddev_profit_bb
 FROM hand_categories
 GROUP BY hand_type, position, stage, opponent_bucket
-HAVING COUNT(*) >= 3  -- minimum sample size
-ORDER BY avg_profit_bb DESC;
+-- No minimum sample - show all data, filter in queries if needed
+ORDER BY hand_type, position, stage, opponent_bucket;
 
 -- COMMAND ----------
 
