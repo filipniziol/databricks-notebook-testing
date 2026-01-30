@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    player_clustering:
+      name: "player_clustering"
+      description: "Train player clustering model and update player_clusters table"
+      tags:
+        project: poker_analyzer
+        layer: ml
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "${var.serverless_environment_version}"
+      
+      tasks:
+        - task_key: train_clustering_model
+          description: "Train K-Means clustering and save to player_clusters"
+          notebook_task:
+            notebook_path: ../src/notebooks/ml/train_player_clustering.py
+          environment_key: serverless

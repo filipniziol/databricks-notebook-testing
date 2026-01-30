@@ -74,6 +74,13 @@ environments:
 - Avoid creating separate tasks for each notebook (doesn't scale)
 - Master notebook should use `dbutils.notebook.run()` to execute child notebooks in order
 
+### Notebook Best Practices
+
+#### No verification/display cells in production notebooks
+- **NEVER** add "verify results" or summary SQL queries at the end
+- Production notebooks should do ONE thing: transform and save
+- Debug/verify cells belong in separate ad-hoc notebooks, not in jobs
+
 ### Resource File Naming
 - **YAML file name MUST match the job/pipeline key name**
 - Example: job `bronze_ingestion` → file `resources/bronze_ingestion.yml`
