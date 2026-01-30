@@ -1,10 +1,7 @@
-bundle:
-  name: hand_outcome
-
 resources:
   jobs:
     hand_outcome:
-      name: "[${bundle.target}] Hand Outcome Predictor"
+      name: "hand_outcome"
       description: "ML pipeline: features → train → score for hand outcome prediction"
       
       tasks:
