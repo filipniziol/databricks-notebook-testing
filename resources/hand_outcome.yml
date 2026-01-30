@@ -1,8 +1,8 @@
 resources:
   jobs:
     hand_outcome:
-      name: "hand_outcome"
-      description: "ML pipeline: features → train → score for hand outcome prediction"
+      name: "hand_ev_predictor"
+      description: "ML pipeline: features → train → score for hand EV prediction"
       
       tasks:
         - task_key: update_features
@@ -14,14 +14,14 @@ resources:
           depends_on:
             - task_key: update_features
           notebook_task:
-            notebook_path: ../src/notebooks/ml/train_hand_outcome.py
+            notebook_path: ../src/notebooks/ml/train_hand_ev.py
           job_cluster_key: ml_cluster
 
         - task_key: score_hands
           depends_on:
             - task_key: train_model
           notebook_task:
-            notebook_path: ../src/notebooks/ml/score_hand_outcomes.py
+            notebook_path: ../src/notebooks/ml/score_hand_ev.py
           job_cluster_key: ml_cluster
 
       job_clusters:

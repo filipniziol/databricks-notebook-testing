@@ -1,12 +1,12 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Score Hand Outcomes
+# MAGIC # Score Hand EV
 # MAGIC 
-# MAGIC Batch inference: predict win probability for recent hands.
+# MAGIC Batch inference: predict expected profit (BB) for all hands.
 # MAGIC 
 # MAGIC **Schedule:** Daily (after features update)
 # MAGIC **Input:** `poker.ml.hand_features` (Feature Table)
-# MAGIC **Output:** `poker.gold.hand_win_predictions` (Delta Table)
+# MAGIC **Output:** `poker.gold.hand_ev_predictions` (Delta Table)
 
 # COMMAND ----------
 
@@ -19,9 +19,9 @@ import pandas as pd
 
 mlflow.set_registry_uri("databricks-uc")
 
-MODEL_NAME = "poker.ml.hand_outcome_predictor"
+MODEL_NAME = "poker.ml.hand_ev_predictor"
 FEATURE_TABLE_NAME = "poker.ml.hand_features"
-OUTPUT_TABLE = "poker.gold.hand_win_predictions"
+OUTPUT_TABLE = "poker.gold.hand_ev_predictions"
 
 # COMMAND ----------
 
@@ -36,6 +36,7 @@ client = MlflowClient()
 try:
     model_version = client.get_model_version_by_alias(MODEL_NAME, "champion")
     model_uri = f"models:/{MODEL_NAME}@champion"
+    run_id = model_version.run_id
     print(f"Using champion alias (version {model_version.version})")
 except Exception as e:
     print(f"Champion alias not found, searching for latest version...")
@@ -44,6 +45,7 @@ except Exception as e:
         raise Exception(f"No model versions found for {MODEL_NAME}")
     latest = max(versions, key=lambda v: int(v.version))
     model_uri = f"models:/{MODEL_NAME}/{latest.version}"
+    run_id = latest.run_id
     print(f"Using version {latest.version}")
 
 # Load model
@@ -53,8 +55,6 @@ print(f"Model loaded: {model_uri}")
 # COMMAND ----------
 
 # Load feature config to get column order
-run_id = client.get_model_version_by_alias(MODEL_NAME, "champion").run_id if 'model_version' in dir() else latest.run_id
-
 artifact_path = client.download_artifacts(run_id, "model_config.json", "/tmp")
 with open(artifact_path) as f:
     config = json.load(f)
@@ -76,33 +76,51 @@ print(f"Total hands to score: {len(df_features)}")
 # Prepare features in correct order
 X = df_features[feature_cols].fillna(0)
 
-# Predict
-win_probabilities = model.predict_proba(X)[:, 1]
+# Predict EV
+predicted_ev = model.predict(X)
 
 # Add predictions to dataframe
-df_features['win_probability'] = win_probabilities
-df_features['predicted_win'] = (win_probabilities >= 0.5).astype(int)
+df_features['predicted_ev_bb'] = predicted_ev
 
 # COMMAND ----------
 
 # Preview predictions
-display(df_features[['hand_id', 'hand_strength_score', 'position_encoded', 'stack_bb', 
-                     'won_hand', 'win_probability', 'predicted_win']].head(20))
+print("Sample predictions:")
+display(df_features[['hand_id', 'hand_strength_score', 'is_final_stage', 'is_late_position', 
+                     'stack_bb', 'profit_bb', 'predicted_ev_bb']].head(20))
 
 # COMMAND ----------
 
-# Check prediction accuracy
-df_features['correct_prediction'] = (df_features['predicted_win'] == df_features['won_hand']).astype(int)
-accuracy = df_features['correct_prediction'].mean()
-print(f"Overall accuracy: {accuracy:.2%}")
+# Compare predicted vs actual
+print(f"\nPrediction quality:")
+print(f"Correlation: {df_features['profit_bb'].corr(df_features['predicted_ev_bb']):.3f}")
 
-# By position
-print("\nAccuracy by position:")
-display(df_features.groupby('position_encoded').agg({
-    'correct_prediction': 'mean',
-    'win_probability': 'mean',
-    'won_hand': 'mean'
-}).round(3))
+# Directional accuracy
+directional_acc = ((df_features['predicted_ev_bb'] > 0) == (df_features['profit_bb'] > 0)).mean()
+print(f"Directional accuracy: {directional_acc:.2%}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Analyze: Best and Worst Spots
+
+# COMMAND ----------
+
+# Top 10 best predicted EV spots
+print("Top 10 Highest EV Spots:")
+display(df_features.nlargest(10, 'predicted_ev_bb')[
+    ['hand_id', 'high_card_rank', 'low_card_rank', 'is_suited', 'is_final_stage', 
+     'is_late_position', 'stack_bb', 'predicted_ev_bb', 'profit_bb']
+])
+
+# COMMAND ----------
+
+# Worst predicted EV spots (should fold)
+print("Top 10 Lowest EV Spots:")
+display(df_features.nsmallest(10, 'predicted_ev_bb')[
+    ['hand_id', 'high_card_rank', 'low_card_rank', 'is_suited', 'is_final_stage', 
+     'is_late_position', 'stack_bb', 'predicted_ev_bb', 'profit_bb']
+])
 
 # COMMAND ----------
 
@@ -114,13 +132,18 @@ display(df_features.groupby('position_encoded').agg({
 # Select columns for output
 output_cols = [
     'hand_id',
+    'high_card_rank',
+    'low_card_rank',
+    'is_suited',
+    'is_pocket_pair',
     'hand_strength_score',
+    'is_final_stage',
     'position_encoded',
     'is_late_position',
     'stack_bb',
     'opponent_count',
-    'win_probability',
-    'predicted_win',
+    'predicted_ev_bb',
+    'profit_bb',
     'won_hand',
     'feature_timestamp'
 ]
@@ -135,36 +158,15 @@ print(f"Saved {df_output.count()} predictions to {OUTPUT_TABLE}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Analysis: When Model Performs Best/Worst
+# MAGIC ## Summary by Situation
 
 # COMMAND ----------
 
-# High confidence correct vs wrong
-df_features['confidence'] = abs(df_features['win_probability'] - 0.5) * 2  # 0-1 scale
+# EV by stage and position
+summary = df_features.groupby(['is_final_stage', 'is_late_position']).agg({
+    'predicted_ev_bb': ['mean', 'std', 'count'],
+    'profit_bb': 'mean'
+}).round(2)
 
-# High confidence (>0.8) accuracy
-high_conf = df_features[df_features['confidence'] > 0.6]
-if len(high_conf) > 0:
-    print(f"High confidence predictions: {len(high_conf)}")
-    print(f"High confidence accuracy: {high_conf['correct_prediction'].mean():.2%}")
-
-# Low confidence accuracy  
-low_conf = df_features[df_features['confidence'] <= 0.3]
-if len(low_conf) > 0:
-    print(f"\nLow confidence predictions: {len(low_conf)}")
-    print(f"Low confidence accuracy: {low_conf['correct_prediction'].mean():.2%}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Output Schema
-# MAGIC 
-# MAGIC | Column | Description |
-# MAGIC |--------|-------------|
-# MAGIC | hand_id | Unique hand identifier |
-# MAGIC | hand_strength_score | Computed hand strength |
-# MAGIC | position_encoded | 0=early, 1=mid, 2=late, 3=blinds |
-# MAGIC | stack_bb | Stack depth in big blinds |
-# MAGIC | win_probability | Model's predicted win probability |
-# MAGIC | predicted_win | Binary prediction (prob >= 0.5) |
-# MAGIC | won_hand | Actual outcome (ground truth) |
+print("Average EV by Stage and Position:")
+display(summary)

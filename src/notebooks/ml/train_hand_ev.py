@@ -1,12 +1,15 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Train Hand Outcome Model
+# MAGIC # Train Hand EV Model
 # MAGIC 
-# MAGIC Trains binary classifier to predict if hero will win the hand.
+# MAGIC Predicts expected profit in BB for a given hand situation.
 # MAGIC 
 # MAGIC **Schedule:** Manual/Weekly
 # MAGIC **Input:** `poker.ml.hand_features` (Feature Table)
-# MAGIC **Output:** `poker.ml.hand_outcome_predictor` (Registered Model)
+# MAGIC **Output:** `poker.ml.hand_ev_predictor` (Registered Model)
+# MAGIC
+# MAGIC **Input per row:** Hero's hole cards + position + stack + stage + opponents
+# MAGIC **Output:** Expected profit in big blinds (can be negative)
 
 # COMMAND ----------
 
@@ -14,9 +17,10 @@ import mlflow
 import json
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import numpy as np
 import pandas as pd
 
 # COMMAND ----------
@@ -24,7 +28,7 @@ import pandas as pd
 mlflow.set_registry_uri("databricks-uc")
 
 FEATURE_TABLE_NAME = "poker.ml.hand_features"
-MODEL_NAME = "poker.ml.hand_outcome_predictor"
+MODEL_NAME = "poker.ml.hand_ev_predictor"
 
 # COMMAND ----------
 
@@ -36,8 +40,20 @@ MODEL_NAME = "poker.ml.hand_outcome_predictor"
 # Load features
 df_features = spark.table(FEATURE_TABLE_NAME).toPandas()
 
+# Remove outliers in profit_bb (beyond 3 std)
+profit_mean = df_features['profit_bb'].mean()
+profit_std = df_features['profit_bb'].std()
+df_features = df_features[
+    (df_features['profit_bb'] > profit_mean - 3*profit_std) & 
+    (df_features['profit_bb'] < profit_mean + 3*profit_std)
+]
+
 print(f"Total samples: {len(df_features)}")
-print(f"Win rate: {df_features['won_hand'].mean():.2%}")
+print(f"Profit BB stats:")
+print(f"  Mean: {df_features['profit_bb'].mean():.2f} BB")
+print(f"  Std:  {df_features['profit_bb'].std():.2f} BB")
+print(f"  Min:  {df_features['profit_bb'].min():.2f} BB")
+print(f"  Max:  {df_features['profit_bb'].max():.2f} BB")
 
 # COMMAND ----------
 
@@ -48,6 +64,7 @@ feature_cols = [
     'is_suited',
     'is_pocket_pair',
     'hand_strength_score',
+    'is_final_stage',
     'position_encoded',
     'is_late_position',
     'stack_bb',
@@ -59,10 +76,9 @@ feature_cols = [
 ]
 
 X = df_features[feature_cols].fillna(0)
-y = df_features['won_hand']
+y = df_features['profit_bb'].fillna(0)
 
 print(f"Features shape: {X.shape}")
-print(f"Class distribution:\n{y.value_counts(normalize=True)}")
 
 # COMMAND ----------
 
@@ -73,21 +89,20 @@ print(f"Class distribution:\n{y.value_counts(normalize=True)}")
 
 # Train/test split
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+    X, y, test_size=0.2, random_state=42
 )
 
 print(f"Train: {len(X_train)}, Test: {len(X_test)}")
 
 # COMMAND ----------
 
-# Create pipeline (scaler + classifier)
+# Create pipeline (scaler + regressor)
 pipeline = Pipeline([
     ('scaler', StandardScaler()),
-    ('classifier', RandomForestClassifier(
+    ('regressor', RandomForestRegressor(
         n_estimators=100,
         max_depth=10,
         min_samples_split=20,
-        class_weight='balanced',  # Handle imbalanced classes
         random_state=42,
         n_jobs=-1
     ))
@@ -96,27 +111,32 @@ pipeline = Pipeline([
 # COMMAND ----------
 
 # Train with MLflow tracking
-with mlflow.start_run(run_name="hand_outcome_rf") as run:
+with mlflow.start_run(run_name="hand_ev_rf") as run:
     
     # Fit pipeline
     pipeline.fit(X_train, y_train)
     
     # Evaluate
     y_pred = pipeline.predict(X_test)
-    y_proba = pipeline.predict_proba(X_test)[:, 1]
     
     # Metrics
-    accuracy = (y_pred == y_test).mean()
-    auc_roc = roc_auc_score(y_test, y_proba)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
     
-    print(f"Accuracy: {accuracy:.3f}")
-    print(f"AUC-ROC: {auc_roc:.3f}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
+    print(f"MAE:  {mae:.2f} BB (average prediction error)")
+    print(f"RMSE: {rmse:.2f} BB")
+    print(f"R²:   {r2:.3f}")
+    
+    # Directional accuracy (did we predict win/loss correctly?)
+    directional_acc = ((y_pred > 0) == (y_test > 0)).mean()
+    print(f"Directional accuracy: {directional_acc:.2%}")
     
     # Log metrics
-    mlflow.log_metric("accuracy", accuracy)
-    mlflow.log_metric("auc_roc", auc_roc)
+    mlflow.log_metric("mae", mae)
+    mlflow.log_metric("rmse", rmse)
+    mlflow.log_metric("r2", r2)
+    mlflow.log_metric("directional_accuracy", directional_acc)
     mlflow.log_param("n_estimators", 100)
     mlflow.log_param("max_depth", 10)
     mlflow.log_param("n_features", len(feature_cols))
@@ -124,7 +144,7 @@ with mlflow.start_run(run_name="hand_outcome_rf") as run:
     # Feature importance
     feature_importance = dict(zip(
         feature_cols, 
-        pipeline.named_steps['classifier'].feature_importances_
+        pipeline.named_steps['regressor'].feature_importances_
     ))
     print("\nFeature Importance:")
     for feat, imp in sorted(feature_importance.items(), key=lambda x: -x[1]):
@@ -138,9 +158,9 @@ with mlflow.start_run(run_name="hand_outcome_rf") as run:
     # Save feature columns for inference
     feature_config = {
         "feature_columns": feature_cols,
-        "target_column": "won_hand",
-        "model_type": "RandomForestClassifier",
-        "description": "Predicts probability of hero winning the hand"
+        "target_column": "profit_bb",
+        "model_type": "RandomForestRegressor",
+        "description": "Predicts expected profit in BB for a hand"
     }
     with open("/tmp/model_config.json", "w") as f:
         json.dump(feature_config, f, indent=2)
@@ -187,13 +207,51 @@ print(f"Set @champion alias to version {latest_version.version}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Analyze: When is EV Highest?
+
+# COMMAND ----------
+
+# Add predictions to test set
+df_test = X_test.copy()
+df_test['actual_profit_bb'] = y_test.values
+df_test['predicted_profit_bb'] = y_pred
+
+# Best predicted spots
+print("Top 10 highest EV situations (predicted):")
+display(df_test.nlargest(10, 'predicted_profit_bb')[
+    ['hand_strength_score', 'is_final_stage', 'is_late_position', 'stack_bb', 'predicted_profit_bb', 'actual_profit_bb']
+])
+
+# COMMAND ----------
+
+# EV by position and stage
+print("\nAverage predicted EV by position and stage:")
+df_test['position_name'] = df_test['position_encoded'].map({0: 'Early', 1: 'Middle', 2: 'Late', 3: 'Blinds'})
+df_test['stage_name'] = df_test['is_final_stage'].map({0: 'Rush', 1: 'Final'})
+
+ev_by_situation = df_test.groupby(['stage_name', 'position_name']).agg({
+    'predicted_profit_bb': 'mean',
+    'actual_profit_bb': 'mean'
+}).round(2)
+display(ev_by_situation)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Model Summary
 # MAGIC 
-# MAGIC The Hand Outcome Predictor uses:
-# MAGIC - **Hand strength:** Card ranks, suited, pocket pair
-# MAGIC - **Position:** Early/Middle/Late/Blinds
-# MAGIC - **Stack depth:** BB count
-# MAGIC - **Opponent info:** Count, cluster distribution
-# MAGIC - **Preflop action:** Raises, hero raised
+# MAGIC **Input (1 row = 1 hand dealt to hero):**
+# MAGIC - Hole cards: rank1, rank2, suited, pocket pair
+# MAGIC - Position: early/middle/late/blinds
+# MAGIC - Stack depth in BB
+# MAGIC - Stage: rush vs final
+# MAGIC - Opponent count and types
+# MAGIC - Preflop action so far
 # MAGIC 
-# MAGIC Output: `win_probability` (0-1) - probability hero wins the hand
+# MAGIC **Output:**
+# MAGIC - `predicted_profit_bb` - expected profit/loss in big blinds
+# MAGIC 
+# MAGIC **Interpretation:**
+# MAGIC - Positive = profitable spot
+# MAGIC - Negative = expected to lose
+# MAGIC - Higher value = better opportunity

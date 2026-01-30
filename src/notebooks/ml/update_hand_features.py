@@ -34,6 +34,7 @@ fe = FeatureEngineeringClient()
 df_features = spark.sql("""
 WITH hand_strength AS (
     -- Parse hero cards into features
+    -- Format: 5hAs = 5h As (4 chars: rank1+suit1+rank2+suit2)
     SELECT 
         h.hand_id,
         h.hero_cards,
@@ -47,20 +48,20 @@ WITH hand_strength AS (
             ELSE CAST(SUBSTRING(h.hero_cards, 1, 1) AS INT)
         END AS card1_rank,
         CASE 
-            WHEN SUBSTRING(h.hero_cards, 4, 1) = 'A' THEN 14
-            WHEN SUBSTRING(h.hero_cards, 4, 1) = 'K' THEN 13
-            WHEN SUBSTRING(h.hero_cards, 4, 1) = 'Q' THEN 12
-            WHEN SUBSTRING(h.hero_cards, 4, 1) = 'J' THEN 11
-            WHEN SUBSTRING(h.hero_cards, 4, 1) = 'T' THEN 10
-            ELSE CAST(SUBSTRING(h.hero_cards, 4, 1) AS INT)
+            WHEN SUBSTRING(h.hero_cards, 3, 1) = 'A' THEN 14
+            WHEN SUBSTRING(h.hero_cards, 3, 1) = 'K' THEN 13
+            WHEN SUBSTRING(h.hero_cards, 3, 1) = 'Q' THEN 12
+            WHEN SUBSTRING(h.hero_cards, 3, 1) = 'J' THEN 11
+            WHEN SUBSTRING(h.hero_cards, 3, 1) = 'T' THEN 10
+            ELSE CAST(SUBSTRING(h.hero_cards, 3, 1) AS INT)
         END AS card2_rank,
-        -- Suited?
-        CASE WHEN SUBSTRING(h.hero_cards, 2, 1) = SUBSTRING(h.hero_cards, 5, 1) THEN 1 ELSE 0 END AS is_suited,
-        -- Pocket pair?
-        CASE WHEN SUBSTRING(h.hero_cards, 1, 1) = SUBSTRING(h.hero_cards, 4, 1) THEN 1 ELSE 0 END AS is_pocket_pair
+        -- Suited? (compare suit1 at pos 2 with suit2 at pos 4)
+        CASE WHEN SUBSTRING(h.hero_cards, 2, 1) = SUBSTRING(h.hero_cards, 4, 1) THEN 1 ELSE 0 END AS is_suited,
+        -- Pocket pair? (compare rank1 at pos 1 with rank2 at pos 3)
+        CASE WHEN SUBSTRING(h.hero_cards, 1, 1) = SUBSTRING(h.hero_cards, 3, 1) THEN 1 ELSE 0 END AS is_pocket_pair
     FROM poker.silver.hands h
     WHERE h.hero_cards IS NOT NULL 
-      AND LENGTH(h.hero_cards) >= 5
+      AND LENGTH(h.hero_cards) >= 4
 ),
 
 hero_stats AS (
@@ -69,8 +70,8 @@ hero_stats AS (
         hp.chips_start,
         hp.net_profit,
         hp.went_to_showdown,
+        hp.won_hand AS hero_won,  -- Use won_hand from hand_players (correct)
         h.big_blind,
-        h.hero_result,
         h.hand_timestamp,
         -- Stack depth in BB
         CAST(hp.chips_start AS DOUBLE) / NULLIF(h.big_blind, 0) AS stack_bb,
@@ -110,6 +111,22 @@ preflop_action AS (
         SUM(CASE WHEN street = 'preflop' AND action_type = 'raise' THEN 1 ELSE 0 END) AS preflop_raise_count
     FROM poker.silver.hand_actions
     GROUP BY hand_id
+),
+
+hand_stage AS (
+    -- Get stage (rush/final) from screenshot mapping
+    -- Use FIRST stage if multiple screenshots match same hand
+    SELECT 
+        hand_id,
+        FIRST(stage) AS stage
+    FROM (
+        SELECT 
+            shm.hand_id,
+            s.stage
+        FROM poker.silver.screenshot_hand_mapping shm
+        JOIN poker.silver.screenshots s ON shm.file_name = s.file_name
+    )
+    GROUP BY hand_id
 )
 
 SELECT 
@@ -128,6 +145,9 @@ SELECT
         hs.is_pocket_pair * 5
     AS DOUBLE) AS hand_strength_score,
     
+    -- Stage feature (rush=0, final=1)
+    CAST(CASE WHEN stg.stage = 'final' THEN 1 ELSE 0 END AS DOUBLE) AS is_final_stage,
+    
     -- Position features
     CAST(hero.position_encoded AS DOUBLE) AS position_encoded,
     CAST(hero.is_late_position AS DOUBLE) AS is_late_position,
@@ -145,10 +165,11 @@ SELECT
     CAST(COALESCE(pf.preflop_raise_count, 0) AS DOUBLE) AS preflop_raise_count,
     
     -- Target: did hero win? (1=won, 0=lost/folded)
-    CASE WHEN hero.hero_result = 'won' THEN 1 ELSE 0 END AS won_hand,
+    CASE WHEN hero.hero_won = true THEN 1 ELSE 0 END AS won_hand,
     
     -- Target: profit in BB (for regression)
-    CAST(COALESCE(hero.net_profit, 0) AS DOUBLE) / NULLIF(hero.stack_bb * hero.big_blind / hero.chips_start, 0) AS profit_bb,
+    -- net_profit is in chips, divide by big_blind to get BB
+    CAST(COALESCE(hero.net_profit, 0) AS DOUBLE) / NULLIF(hero.big_blind, 0) AS profit_bb,
     
     -- Metadata
     hero.hand_timestamp AS feature_timestamp
@@ -157,6 +178,7 @@ FROM hand_strength hs
 JOIN hero_stats hero ON hs.hand_id = hero.hand_id
 LEFT JOIN opponent_info opp ON hs.hand_id = opp.hand_id
 LEFT JOIN preflop_action pf ON hs.hand_id = pf.hand_id
+LEFT JOIN hand_stage stg ON hs.hand_id = stg.hand_id
 WHERE hero.stack_bb IS NOT NULL
   AND hero.stack_bb > 0
 """)
@@ -182,12 +204,15 @@ if not table_exists:
     )
     print(f"Created new feature table: {FEATURE_TABLE_NAME}")
 else:
-    fe.write_table(
+    # Feature Store only supports 'merge' - delete and recreate for full refresh
+    spark.sql(f"DROP TABLE IF EXISTS {FEATURE_TABLE_NAME}")
+    fe.create_table(
         name=FEATURE_TABLE_NAME,
+        primary_keys=["hand_id"],
         df=df_features,
-        mode="overwrite"  # Full refresh - hands don't change
+        description="Hand-level features for outcome prediction model"
     )
-    print(f"Updated feature table: {FEATURE_TABLE_NAME}")
+    print(f"Recreated feature table: {FEATURE_TABLE_NAME}")
 
 # COMMAND ----------
 
