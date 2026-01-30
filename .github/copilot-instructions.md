@@ -197,3 +197,176 @@ All setup notebooks live in `src/notebooks/setup/` and run in numerical order vi
 - Use `readStream` + `writeStream` with checkpoints
 - Or MERGE INTO for upserts
 - Track what's been processed via watermarks or checkpoints
+
+---
+
+## ML Development Best Practices
+
+### Runtime Requirements
+- **Feature Engineering requires ML Runtime** - serverless doesn't work
+- Use `15.4.x-cpu-ml-scala2.12` or newer ML runtime
+- `databricks-feature-engineering` package only available on ML clusters
+
+### MLflow + Unity Catalog Constraints
+
+#### Model Signatures (CRITICAL)
+- **Unity Catalog requires model signature with BOTH input AND output**
+- `infer_signature()` alone may not work - use `input_example` parameter
+- Best approach: pass `input_example` to `log_model()` - MLflow auto-infers signature
+```python
+# Good - auto-infers both input and output
+mlflow.sklearn.log_model(
+    sk_model=model,
+    artifact_path="model",
+    input_example=X_train[:5],  # This triggers signature inference
+    registered_model_name="catalog.schema.model_name"
+)
+```
+
+#### No "latest" in Unity Catalog
+- `models:/name/latest` doesn't work in Unity Catalog
+- Use aliases: `models:/name@champion` (recommended)
+- Or explicit version: `models:/name/3`
+- Fallback pattern:
+```python
+try:
+    model = mlflow.load_model(f"models:/{name}@champion")
+except:
+    versions = client.search_model_versions(f"name='{name}'")
+    latest = sorted(versions, key=lambda v: int(v.version), reverse=True)[0]
+    model = mlflow.load_model(f"models:/{name}/{latest.version}")
+```
+
+#### DECIMAL Types Don't Work
+- MLflow signatures don't support Spark `DecimalType`
+- Always cast to DOUBLE in SQL: `CAST(column AS DOUBLE)`
+- Or convert in pandas: `df[col] = df[col].astype(float)`
+
+### Feature Store Limitations
+
+#### Unsupervised Learning
+- `fe.log_model()` doesn't work well for unsupervised models (no label)
+- Use regular `mlflow.sklearn.log_model()` instead
+- You lose Feature Store lineage but model registers correctly
+
+#### Feature Table Schema Changes
+- If you change column types, you must DROP and recreate the table
+- `fe.write_table(mode="merge")` won't change schema
+```python
+spark.sql(f"DROP TABLE IF EXISTS {FEATURE_TABLE_NAME}")
+fe.create_table(name=..., primary_keys=[...], df=df_features)
+```
+
+### Notebook Separation (Production Pattern)
+
+**Split ML pipelines into 3 notebooks:**
+
+| Notebook | Purpose | Schedule |
+|----------|---------|----------|
+| `update_features.py` | Update Feature Table | Daily |
+| `train_model.py` | Train & register model | Manual/Weekly |
+| `score_batch.py` | Batch inference | Daily |
+
+**Why separate?**
+- Training is expensive, don't run daily
+- Scoring can use cached model (alias)
+- Feature updates are independent of model version
+- Easier debugging and monitoring
+
+### Model Artifacts for Metadata
+
+**Problem:** K-Means returns `int`, how do you know what cluster 0 means?
+
+**Solution:** Save cluster definitions as JSON artifact with the model:
+```python
+cluster_definitions = {
+    "0": {"name": "Nit", "description": "Tight passive", "strategy": "Steal blinds"},
+    "1": {"name": "LAG", "description": "Loose aggressive", "strategy": "Call lighter"}
+}
+
+# Save as artifact
+with open("/tmp/cluster_definitions.json", "w") as f:
+    json.dump(cluster_definitions, f)
+mlflow.log_artifact("/tmp/cluster_definitions.json")
+
+# Load in scoring notebook
+artifact_path = client.download_artifacts(run_id, "cluster_definitions.json")
+definitions = json.load(open(artifact_path))
+```
+
+### Pipeline Pattern (Scaler + Model)
+
+**Don't save scaler separately** - wrap in sklearn Pipeline:
+```python
+from sklearn.pipeline import Pipeline
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('model', KMeans(n_clusters=3))
+])
+pipeline.fit(X_train)
+
+# Now prediction is clean - no separate scaling step
+cluster = pipeline.predict(raw_features)  # Scales internally
+```
+
+### Job Configuration for ML
+
+```yaml
+tasks:
+  - task_key: update_features
+    notebook_task:
+      notebook_path: ../src/notebooks/ml/update_features.py
+    job_cluster_key: ml_cluster
+
+  - task_key: train_model
+    depends_on:
+      - task_key: update_features
+    notebook_task:
+      notebook_path: ../src/notebooks/ml/train_model.py
+    job_cluster_key: ml_cluster
+
+  - task_key: score_batch
+    depends_on:
+      - task_key: train_model
+    notebook_task:
+      notebook_path: ../src/notebooks/ml/score_batch.py
+    job_cluster_key: ml_cluster
+
+job_clusters:
+  - job_cluster_key: ml_cluster
+    new_cluster:
+      spark_version: "15.4.x-cpu-ml-scala2.12"
+      node_type_id: "Standard_DS3_v2"
+      num_workers: 0  # Single node for small workloads
+      spark_conf:
+        "spark.databricks.cluster.profile": "singleNode"
+        "spark.master": "local[*, 4]"
+```
+
+### Model Aliases Workflow
+
+After training, set alias for production use:
+```bash
+# Via CLI
+databricks unity-catalog models set-alias \
+  --full-name poker.ml.player_clustering \
+  --alias champion \
+  --version-num 3
+
+# Or via API in notebook
+client.set_registered_model_alias(
+    name="poker.ml.player_clustering",
+    alias="champion", 
+    version="3"
+)
+```
+
+### ML Tables Reference
+
+| Table | Type | Description |
+|-------|------|-------------|
+| `poker.ml.player_features` | Feature Table | Player statistics for ML |
+| `poker.ml.cluster_definitions` | Reference | Cluster ID → name mapping |
+| `poker.gold.player_clusters` | Output | Players with assigned clusters |
+| `poker.ml.player_clustering` | Model | Registered model in Unity Catalog |

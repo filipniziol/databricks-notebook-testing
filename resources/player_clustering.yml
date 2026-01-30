@@ -39,8 +39,6 @@ resources:
             spark_version: "15.4.x-cpu-ml-scala2.12"
             node_type_id: "Standard_DS3_v2"
             num_workers: 0
-            spark_conf:
-              "spark.databricks.cluster.profile": "singleNode"
-              "spark.master": "local[*, 4]"
+            data_security_mode: "SINGLE_USER"
             custom_tags:
               "ResourceClass": "SingleNode"

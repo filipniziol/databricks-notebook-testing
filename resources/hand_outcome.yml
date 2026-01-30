@@ -1,0 +1,43 @@
+bundle:
+  name: hand_outcome
+
+resources:
+  jobs:
+    hand_outcome:
+      name: "[${bundle.target}] Hand Outcome Predictor"
+      description: "ML pipeline: features → train → score for hand outcome prediction"
+      
+      tasks:
+        - task_key: update_features
+          notebook_task:
+            notebook_path: ../src/notebooks/ml/update_hand_features.py
+          job_cluster_key: ml_cluster
+
+        - task_key: train_model
+          depends_on:
+            - task_key: update_features
+          notebook_task:
+            notebook_path: ../src/notebooks/ml/train_hand_outcome.py
+          job_cluster_key: ml_cluster
+
+        - task_key: score_hands
+          depends_on:
+            - task_key: train_model
+          notebook_task:
+            notebook_path: ../src/notebooks/ml/score_hand_outcomes.py
+          job_cluster_key: ml_cluster
+
+      job_clusters:
+        - job_cluster_key: ml_cluster
+          new_cluster:
+            spark_version: "15.4.x-cpu-ml-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            data_security_mode: "SINGLE_USER"
+            custom_tags:
+              "ResourceClass": "SingleNode"
+
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?"  # Daily at 8 AM
+        timezone_id: "Europe/Warsaw"
+        pause_status: PAUSED
